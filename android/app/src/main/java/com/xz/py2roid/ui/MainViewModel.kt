@@ -99,11 +99,15 @@ class MainViewModel : ViewModel() {
     // Detection state
     fun setDetecting(value: Boolean) { _isDetecting.value = value }
 
-    // Debug overlay
+    // Debug overlay — 限速：最多每 100ms 写入一次
     private val _logLines = MutableStateFlow<List<String>>(emptyList())
     val logLines: StateFlow<List<String>> = _logLines.asStateFlow()
+    private var lastLogTime = 0L
 
     fun addLogLine(line: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastLogTime < 100) return // 限速 10 条/秒
+        lastLogTime = now
         val current = _logLines.value
         val updated = if (current.size >= MAX_LOG_LINES) {
             current.drop(current.size - MAX_LOG_LINES + 1) + line

@@ -27,7 +27,6 @@ import com.xz.py2roid.vision.ImagePreprocessor
 import com.xz.py2roid.vision.ModelManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -37,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private var cameraController: CameraController? = null
     private var detector: Detector? = null
     private var isRunning = false
+    private var latestTargetCount = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
 
         // 初始化 Python 桥接
         lifecycleScope.launch(Dispatchers.IO) {
-            PythonBridge.init(mapOf("log_level" to "INFO"))
+            PythonBridge.init()
         }
 
         setContent {
@@ -102,16 +102,15 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 viewModel.updateBoxes(boxes)
-                viewModel.updateHud(HudInfo(
-                    fps = 0f,
-                    targetCount = results.size,
-                    provider = this.detector?.currentProvider ?: "CPU",
-                    commState = "离线"
-                ))
+                latestTargetCount = results.size
             },
             onPerformanceUpdate = { fps, provider, frameTimeMs ->
-                viewModel.updateHud(viewModel.hudInfo.value.copy(
-                    fps = fps, provider = provider, frameTimeMs = frameTimeMs
+                viewModel.updateHud(HudInfo(
+                    fps = fps,
+                    targetCount = latestTargetCount,
+                    provider = provider,
+                    frameTimeMs = frameTimeMs,
+                    commState = "离线"
                 ))
             }
         )
@@ -144,17 +143,13 @@ class MainActivity : ComponentActivity() {
             onFrame = { imageProxy ->
                 val image = imageProxy.image
                 if (image != null) {
-                    lifecycleScope.launch {
-                        withContext(Dispatchers.Default) {
-                            try {
-                                val tensor = ImagePreprocessor.preprocess(image)
-                                det.detect(tensor, 640, 640)
-                            } catch (e: Exception) {
-                                Logger.e("Frame processing error", e)
-                            } finally {
-                                imageProxy.close()
-                            }
-                        }
+                    try {
+                        val tensor = ImagePreprocessor.preprocess(image)
+                        det.detect(tensor, 640, 640)
+                    } catch (e: Exception) {
+                        Logger.e("[M01] Frame error: ${e.message}")
+                    } finally {
+                        imageProxy.close()
                     }
                 } else {
                     imageProxy.close()

@@ -30,10 +30,10 @@ fun DebugOverlay(
 
     val listState = rememberLazyListState()
 
-    // 新行加入时自动滚到底部
+    // 新行加入时滚到底部（无动画，防卡死）
     LaunchedEffect(logLines.size) {
         if (logLines.isNotEmpty()) {
-            listState.animateScrollToItem(logLines.size - 1)
+            listState.scrollToItem(logLines.size - 1)
         }
     }
 

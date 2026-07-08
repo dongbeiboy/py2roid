@@ -38,7 +38,7 @@ data class AppSettings(
     val confidenceThreshold: Float = 0.5f,
     val iouThreshold: Float = 0.45f,
     val commMode: CommMode = CommMode.USB,
-    val inferenceBackend: InferenceBackend = InferenceBackend.NNAPI,
+    val inferenceBackend: InferenceBackend = InferenceBackend.Auto,
     val debugOverlayEnabled: Boolean = false
 )
 

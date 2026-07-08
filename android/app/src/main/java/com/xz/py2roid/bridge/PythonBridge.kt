@@ -7,24 +7,12 @@ import com.xz.py2roid.vision.DetectionResult
 object PythonBridge {
     private const val TAG = "py2roid.PythonBridge"
 
-    fun init(config: Map<String, String>? = null) {
-        // Python 实例已在 Py2roidApp 中由 Chaquopy auto-start
+    fun init() {
         try {
-            if (config != null) {
-                // 用 Python dict 传参
-                val py = Python.getInstance()
-                val builtins = py.getModule("builtins")
-                val pyDict = builtins.callAttr("dict")
-                for ((k, v) in config) {
-                    pyDict.put(k, v)
-                }
-                py.getModule("main").callAttr("init", pyDict)
-            } else {
-                Python.getInstance().getModule("main").callAttr("init")
-            }
+            Python.getInstance().getModule("main").callAttr("init")
             Log.i(TAG, "Python init OK")
         } catch (e: Exception) {
-            Log.e(TAG, "Python init failed", e)
+            Log.e(TAG, "[P01] Python init failed", e)
         }
     }
 
@@ -41,7 +29,7 @@ object PythonBridge {
                 .callAttr("encode_detection", targetList, imgWidth, imgHeight)
             result.toJava(ByteArray::class.java)
         } catch (e: Exception) {
-            Log.e(TAG, "encode_detection failed", e)
+            Log.e(TAG, "[P02] encode_detection failed", e)
             null
         }
     }

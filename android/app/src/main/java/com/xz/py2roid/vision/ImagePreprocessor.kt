@@ -37,22 +37,25 @@ object ImagePreprocessor {
             // Optional horizontal flip for mirror effect (front camera)
             // Core.flip(rgbMat, rgbMat, 1)
 
-            // Convert to CHW float array [3 x H x W] normalized to [0, 1]
-            val channels = listOf(
-                Mat(targetHeight, targetWidth, CvType.CV_32FC1),
-                Mat(targetHeight, targetWidth, CvType.CV_32FC1),
-                Mat(targetHeight, targetWidth, CvType.CV_32FC1)
-            )
-            Core.split(rgbMat, channels)
+            // Split BGR (CV_8UC3) into 3 channels (CV_8UC1), then convert to float
+            val channels8U = ArrayList<Mat>(3).apply {
+                add(Mat())
+                add(Mat())
+                add(Mat())
+            }
+            Core.split(rgbMat, channels8U)
 
             val floatArray = FloatArray(3 * targetHeight * targetWidth)
             var offset = 0
-            for (channel in channels) {
+            for (c8 in channels8U) {
+                val c32f = Mat(targetHeight, targetWidth, CvType.CV_32FC1)
+                c8.convertTo(c32f, CvType.CV_32FC1)
                 val buf = FloatArray(targetHeight * targetWidth)
-                channel.get(0, 0, buf)
+                c32f.get(0, 0, buf)
                 buf.copyInto(floatArray, offset)
                 offset += targetHeight * targetWidth
-                channel.release()
+                c32f.release()
+                c8.release()
             }
 
             // Normalize from [0, 255] to [0, 1]
@@ -65,7 +68,7 @@ object ImagePreprocessor {
 
             return floatArray
         } catch (e: Exception) {
-            Log.e(TAG, "preprocess failed", e)
+            Log.e(TAG, "[E01] preprocess failed: ${e.message}", e)
             throw e
         }
     }

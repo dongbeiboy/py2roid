@@ -46,14 +46,14 @@ class CameraController(
                         cameraProvider = provider
                         bindUseCases(provider, analyzerTargetSize)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to get camera provider", e)
+                        Log.e(TAG, "[C01] Failed to get camera provider", e)
                         onError(e)
                     }
                 },
                 ContextCompat.getMainExecutor(context)
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start camera", e)
+            Log.e(TAG, "[C02] Failed to start camera", e)
             onError(e)
         }
     }
@@ -107,9 +107,8 @@ class CameraController(
                     onFrame(imageProxy)
                 } catch (e: Exception) {
                     Log.e(TAG, "Frame analysis error", e)
-                } finally {
-                    // IMPORTANT: Always close the ImageProxy to free CameraX resources
-                    imageProxy.close()
+                    // onFrame 异常时确保释放，double-close 安全
+                    try { imageProxy.close() } catch (_: Exception) {}
                 }
             }
 
@@ -123,7 +122,7 @@ class CameraController(
 
             Log.d(TAG, "Camera bound successfully, lensFacing=$lensFacing")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to bind camera use cases", e)
+            Log.e(TAG, "[C04] Failed to bind camera use cases", e)
             onError(e)
         }
     }

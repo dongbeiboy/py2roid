@@ -75,7 +75,7 @@ class Detector(
                 when (backend) {
                     InferenceBackend.Auto -> {
                         val recommended = DeviceProfile.getRecommendedBackend(context)
-                        Log.i(TAG, "Auto mode: recommended=$recommended")
+                        Log.i(TAG, "[D01] Auto mode: recommended=$recommended")
                         currentProvider = recommended.name
                         when (recommended) {
                             InferenceBackend.NNAPI -> addNnapi()
@@ -93,7 +93,7 @@ class Detector(
                     InferenceBackend.VCAP -> {
                         setIntraOpNumThreads(4)
                         currentProvider = "CPU"
-                        Log.w(TAG, "VCAP backend not yet supported, falling back to CPU")
+                        Log.w(TAG, "[D02] VCAP not supported, fallback CPU")
                     }
                 }
             }
@@ -144,7 +144,7 @@ class Detector(
                     "inputNames=${inputNames.joinToString()}, " +
                     "outputNames=${outputNames.joinToString()}")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load model: $modelPath", e)
+            Log.e(TAG, "[D04] Failed to load model: $modelPath", e)
             throw e
         }
     }
@@ -165,15 +165,21 @@ class Detector(
             val buffer = FloatBuffer.wrap(inputTensor)
             val tensor = OnnxTensor.createTensor(env, buffer, shape)
 
+            // 从 session 获取第一个 input name
+            val inName = session.inputNames.firstOrNull() ?: "images"
             val output = session.run(
-                mapOf(inputNames.first() to tensor),
-                outputNames.toSet()
+                mapOf(inName to tensor)
             )
 
             tensor.close()
 
-            val outputTensor = output[outputNames.first()] as? OnnxTensor
-                ?: throw OrtException("Output tensor not found")
+            // 从 run 结果中取第一个输出名称（Result 用 iterator 遍历）
+            val outName = output.iterator().next()
+            Log.d(TAG, "[D06] Using output: $outName")
+
+            // 按索引取第一个输出 tensor（get(Int) 直接返回 OnnxValue，无 Optional 包装）
+            val outputTensor = output.get(0) as? OnnxTensor
+                ?: throw OrtException("Output tensor not found for: $outName")
 
             val outputData = outputTensor.floatBuffer
             val outputArray = FloatArray(outputData.remaining())
@@ -181,24 +187,37 @@ class Detector(
             outputTensor.close()
             output.close()
 
-            // YOLOv8 output shape: [1, 84, 8400]
-            val numProposals = 8400
-            val numFeatures = 84 // cx, cy, w, h + 80 class probs
+            // 输出解析：根据实际元素数判断格式
+            val totalElements = outputArray.size
+            Log.d(TAG, "[D07] Output elements: $totalElements")
+            if (totalElements < 84) {
+                Log.w(TAG, "[D08] Output too small, skipping frame")
+                return emptyList()
+            }
+
+            // YOLOv8 标准输出 [1, 84, 8400] = 705,600 floats
+            // cx,cy,w,h 是像素坐标（640 空间），类概率已含 sigmoid
+            val numProposals = if (totalElements == 705600) 8400 else {
+                // 其他格式尝试按 85 维解析
+                totalElements / 85
+            }
+            val numFeatures = totalElements / numProposals
+            val numClasses = numFeatures - 4
+            Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses")
+
             val detections = mutableListOf<DetectionResult>()
 
-            // Transpose from [84, 8400] to [8400, 84]
             for (i in 0 until numProposals) {
-                // cx, cy, w, h
                 val cx = outputArray[i]
                 val cy = outputArray[1 * numProposals + i]
                 val w = outputArray[2 * numProposals + i]
                 val h = outputArray[3 * numProposals + i]
 
-                // Find the class with the highest probability
+                // 类概率：YOLOv8 输出自带 sigmoid，直接取
                 var maxProb = 0f
                 var maxClassId = 0
-                for (c in 0 until 80) {
-                    val prob = sigmoid(outputArray[(4 + c) * numProposals + i])
+                for (c in 0 until numClasses.coerceAtMost(80)) {
+                    val prob = outputArray[(4 + c) * numProposals + i]
                     if (prob > maxProb) {
                         maxProb = prob
                         maxClassId = c
@@ -207,11 +226,11 @@ class Detector(
 
                 if (maxProb < confidenceThreshold) continue
 
-                // Convert cx, cy, w, h to x1, y1, x2, y2 (normalized)
-                val x1 = (cx - w / 2f) / inputWidth
-                val y1 = (cy - h / 2f) / inputHeight
-                val x2 = (cx + w / 2f) / inputWidth
-                val y2 = (cy + h / 2f) / inputHeight
+                // 坐标归一化到 [0,1]
+                val x1 = ((cx - w / 2f) / inputWidth).coerceIn(0f, 1f)
+                val y1 = ((cy - h / 2f) / inputHeight).coerceIn(0f, 1f)
+                val x2 = ((cx + w / 2f) / inputWidth).coerceIn(0f, 1f)
+                val y2 = ((cy + h / 2f) / inputHeight).coerceIn(0f, 1f)
 
                 val label = if (maxClassId in COCO_CLASSES.indices) {
                     COCO_CLASSES[maxClassId]
@@ -243,7 +262,7 @@ class Detector(
 
             return finalDetections
         } catch (e: Exception) {
-            Log.e(TAG, "Detection failed", e)
+            Log.e(TAG, "[D05] Detection failed: ${e.message}", e)
             val elapsed = System.currentTimeMillis() - startTime
             onPerformanceUpdate(0f, currentProvider, elapsed)
             throw e
