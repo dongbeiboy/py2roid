@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -41,81 +43,86 @@ fun MainScreen(
         onDispose { showSystemBars(window) }
     }
 
-    when (screen) {
-        AppScreen.Settings -> {
-            SettingsScreen(
-                settings = settings,
-                onConfidenceChange = viewModel::updateConfidence,
-                onIouChange = viewModel::updateIou,
-                onCommModeChange = viewModel::updateCommMode,
-                onBackendChange = viewModel::updateBackend,
-                onDebugOverlayChange = viewModel::updateDebugOverlay,
-                onBack = viewModel::navigateToMain
-            )
-        }
+    // PreviewView 在 when 外部创建，切页面不销毁
+    val context = LocalContext.current
+    val previewView = remember { PreviewView(context) }
+    LaunchedEffect(previewView) {
+        viewModel.setPreviewView(previewView)
+    }
 
-        AppScreen.Main -> {
-            val context = LocalContext.current
-            val previewView = remember { PreviewView(context) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        // 相机层始终在 composition 中，切设置页时保持 Surface
+        CameraPreview(
+            previewView = previewView,
+            boxes = detectionBoxes,
+            modifier = Modifier.fillMaxSize()
+        )
 
-            LaunchedEffect(previewView) {
-                viewModel.setPreviewView(previewView)
+        when (screen) {
+            AppScreen.Settings -> {
+                SettingsScreen(
+                    settings = settings,
+                    onConfidenceChange = viewModel::updateConfidence,
+                    onIouChange = viewModel::updateIou,
+                    onCommModeChange = viewModel::updateCommMode,
+                    onBackendChange = viewModel::updateBackend,
+                    onDebugOverlayChange = viewModel::updateDebugOverlay,
+                    onBack = viewModel::navigateToMain
+                )
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                // Layer 2: 摄像头预览（全屏铺满）
-                CameraPreview(
-                    previewView = previewView,
-                    boxes = detectionBoxes,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Layer 3: HUD 信息层（顶层，点击穿透，占据状态栏位置）
+            AppScreen.Main -> {
+                // HUD 信息层
                 HudOverlay(
                     hudData = HudData(
                         fps = hudInfo.fps,
                         targetCount = hudInfo.targetCount,
                         provider = hudInfo.provider,
                         commState = hudInfo.commState,
-                        frameTimeMs = hudInfo.frameTimeMs
+                        frameTimeMs = hudInfo.frameTimeMs,
+                        cpuLoad = hudInfo.cpuLoad,
+                        cpuTemp = hudInfo.cpuTemp,
+                        gpuLoad = hudInfo.gpuLoad
                     ),
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // 调试日志覆盖层（开关在设置页）
-                if (settings.debugOverlayEnabled) {
-                    DebugOverlay(
-                        logLines = logLines,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                // Layer 1: 底部控制栏（导航栏避让，防止手势冲突）
+                // 底部控制栏
                 ControlBar(
                     onSettingsClick = viewModel::navigateToSettings,
                     onModelClick = viewModel::showModelPicker,
-                    onCommClick = { /* TODO: Phase 4 通讯模式切换 */ },
+                    onCommClick = { },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                 )
-            }
 
-            // 模型选择 BottomSheet
-            if (showModelPicker) {
-                ModelPicker(
-                    models = models,
-                    selectedModel = selectedModel,
-                    onModelSelected = viewModel::selectModel,
-                    onImportClick = { /* TODO: Phase 3b 文件选择器 */ },
-                    onDismiss = viewModel::hideModelPicker
-                )
+                // 调试日志覆盖层（在控制栏之上）
+                if (settings.debugOverlayEnabled) {
+                    DebugOverlay(
+                        logLines = logLines,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 56.dp)
+                    )
+                }
             }
         }
+    }
+
+    // 模型选择 BottomSheet（独立于 when，始终可触发）
+    if (showModelPicker) {
+        ModelPicker(
+            models = models,
+            selectedModel = selectedModel,
+            onModelSelected = viewModel::selectModel,
+            onImportClick = { },
+            onDismiss = viewModel::hideModelPicker
+        )
     }
 }
 

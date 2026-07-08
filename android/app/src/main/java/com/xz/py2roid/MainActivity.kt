@@ -4,14 +4,17 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xz.py2roid.bridge.PythonBridge
 import com.xz.py2roid.service.DetectionForegroundService
+import com.xz.py2roid.ui.AppScreen
 import com.xz.py2roid.ui.BoundingBox
 import com.xz.py2roid.ui.HudInfo
 import com.xz.py2roid.ui.MainScreen
@@ -21,11 +24,13 @@ import com.xz.py2roid.util.Logger
 import com.xz.py2roid.util.OriginOsHelper
 import com.xz.py2roid.util.PermissionHelper
 import com.xz.py2roid.util.SettingsStore
+import com.xz.py2roid.util.SystemStats
 import com.xz.py2roid.vision.CameraController
 import com.xz.py2roid.vision.Detector
 import com.xz.py2roid.vision.ImagePreprocessor
 import com.xz.py2roid.vision.ModelManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -60,12 +65,26 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: MainViewModel = viewModel()
             val previewView by viewModel.previewView.collectAsState()
+            val screen by viewModel.screen.collectAsState()
 
             // 当 previewView 就绪且权限已授予，启动相机
             if (previewView != null && permissionHelper.hasCamera() && !isRunning) {
                 isRunning = true
                 lifecycleScope.launch {
                     startDetection(viewModel, previewView!!)
+                }
+            }
+
+            // 系统返回键/手势：设置页 → 主界面，主界面才退出
+            BackHandler(screen == AppScreen.Settings) {
+                viewModel.navigateToMain()
+            }
+
+            // 从设置页返回主界面时，重启相机（设置页遮挡可能丢失 Surface）
+            LaunchedEffect(screen) {
+                if (screen == AppScreen.Main && isRunning) {
+                    delay(100)
+                    cameraController?.startCamera()
                 }
             }
 
@@ -105,7 +124,7 @@ class MainActivity : ComponentActivity() {
                 latestTargetCount = results.size
             },
             onPerformanceUpdate = { fps, provider, frameTimeMs ->
-                viewModel.updateHud(HudInfo(
+                viewModel.updateHud(viewModel.hudInfo.value.copy(
                     fps = fps,
                     targetCount = latestTargetCount,
                     provider = provider,
@@ -165,6 +184,25 @@ class MainActivity : ComponentActivity() {
 
         viewModel.setDetecting(true)
         Logger.i("Detection started")
+
+        // 定时轮询系统状态（CPU/GPU/温度），每 3 秒一次
+        lifecycleScope.launch(Dispatchers.IO) {
+            // 预热，先跑两次建立 CPU 基线
+            SystemStats.cpuLoad()
+            kotlinx.coroutines.delay(500)
+            SystemStats.cpuLoad()
+
+            while (true) {
+                kotlinx.coroutines.delay(3000)
+                val cpu = SystemStats.cpuLoad()
+                val temp = SystemStats.cpuTemp(this@MainActivity)
+                val gpu = SystemStats.gpuLoad(this@MainActivity)
+                Logger.i("[Stats] CPU=${cpu}% TEMP=${temp}℃ GPU=${gpu}")
+                viewModel.updateHud(viewModel.hudInfo.value.copy(
+                    cpuLoad = cpu, cpuTemp = temp, gpuLoad = gpu
+                ))
+            }
+        }
     }
 
     private fun startForegroundService() {
@@ -187,7 +225,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // CameraX 会在 lifecycle resume 时自动恢复
     }
 
     override fun onDestroy() {

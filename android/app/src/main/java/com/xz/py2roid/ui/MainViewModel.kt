@@ -12,7 +12,10 @@ data class HudInfo(
     val targetCount: Int = 0,
     val provider: String = "CPU",
     val frameTimeMs: Long = 0,
-    val commState: String = "离线"
+    val commState: String = "离线",
+    val cpuLoad: Int = 0,
+    val cpuTemp: Int = 0,
+    val gpuLoad: Int = 0
 )
 
 enum class AppScreen { Main, Settings }

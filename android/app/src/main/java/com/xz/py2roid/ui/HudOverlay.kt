@@ -22,7 +22,10 @@ data class HudData(
     val targetCount: Int = 0,
     val provider: String = "CPU",
     val commState: String = "离线",
-    val frameTimeMs: Long = 0
+    val frameTimeMs: Long = 0,
+    val cpuLoad: Int = 0,
+    val cpuTemp: Int = 0,
+    val gpuLoad: Int = 0
 )
 
 @Composable
@@ -31,9 +34,15 @@ fun HudOverlay(
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
-        // 左上区：FPS / 推理后端 / 帧耗时
+        // 左上区：FPS / 推理后端 / 帧耗时 / CPU/GPU
+        val gpuText = if (hudData.gpuLoad < 0) "GPU N/A" else "GPU ${hudData.gpuLoad}%"
         HudBadge(
-            text = "${hudData.fps.toInt()} FPS | ${hudData.provider} | ${hudData.frameTimeMs}ms",
+            text = "${hudData.fps.toInt()} FPS | ${hudData.provider} | ${hudData.frameTimeMs}ms\nCPU ${hudData.cpuLoad}% ${hudData.cpuTemp}℃ | $gpuText",
+            color = when {
+                hudData.cpuTemp >= 90 -> Color(0xFFFF5252)
+                hudData.cpuTemp >= 75 -> Color(0xFFFFD740)
+                else -> Color.White
+            },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(8.dp)
@@ -59,11 +68,11 @@ private fun HudBadge(
     Text(
         text = text,
         color = color,
-        fontSize = 11.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Medium,
-        style = MaterialTheme.typography.labelSmall,
+        lineHeight = 13.sp,
         modifier = modifier
             .background(Color(0x80000000), shape = MaterialTheme.shapes.small)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 3.dp)
     )
 }

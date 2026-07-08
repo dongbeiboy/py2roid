@@ -35,6 +35,7 @@ class CameraController(
     }
 
     fun startCamera(analyzerTargetSize: Size = Size(640, 480)) {
+        Log.d(TAG, "[C05] startCamera called, lensFacing=$lensFacing")
         try {
             val future = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture = future

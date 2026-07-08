@@ -1,40 +1,75 @@
 {
-  "description": "py2roid 推理后端自动调度配置",
-  "version": 1,
+  "description": "py2roid 推理后端 + 系统监控自动配置",
+  "version": 2,
   "rules": [
+    {
+      "match": { "manufacturer": "vivo", "model": "iPA2475" },
+      "backend": "CPU",
+      "system": {
+        "thermal_base": "/sys/devices/virtual/thermal",
+        "cpu_temp_zones": ["soc_max", "soc-bot1", "cpu-big-core7-0"],
+        "gpu_temp_zones": ["gpu1"],
+        "gpu_util_available": false,
+        "num_cpu_cores": 8
+      },
+      "reason": "MTK 天玑 NNAPI Split 不兼容；Android 16 thermal 路径走 /sys/devices/virtual/thermal/"
+    },
     {
       "match": { "manufacturer": "vivo" },
       "backend": "CPU",
-      "reason": "MTK 天玑 NNAPI Split 算子不兼容 YOLOv8"
+      "system": {
+        "thermal_base": "/sys/devices/virtual/thermal",
+        "cpu_temp_zones": ["soc_max"],
+        "gpu_util_available": false
+      },
+      "reason": "vivo MTK 默认 CPU 后端"
     },
     {
       "match": { "manufacturer": "xiaomi" },
       "backend": "NNAPI",
+      "system": {
+        "gpu_util_available": true
+      },
       "reason": "骁龙 8 系 NNAPI 兼容性良好"
     },
     {
       "match": { "manufacturer": "OnePlus" },
       "backend": "NNAPI",
+      "system": {
+        "gpu_util_available": true
+      },
       "reason": "骁龙 NNAPI 兼容"
     },
     {
       "match": { "manufacturer": "samsung" },
       "backend": "NNAPI",
+      "system": {
+        "gpu_util_available": true
+      },
       "reason": "Exynos/骁龙 NNAPI 支持良好"
     },
     {
       "match": { "manufacturer": "google" },
       "backend": "NNAPI",
+      "system": {
+        "gpu_util_available": true
+      },
       "reason": "Pixel Tensor NNAPI 支持"
     },
     {
       "match": { "manufacturer": "HUAWEI" },
       "backend": "CPU",
+      "system": {
+        "gpu_util_available": false
+      },
       "reason": "麒麟 NPU 需通过 HiAI，NNAPI 不可靠"
     },
     {
       "match": { "manufacturer": "honor" },
       "backend": "CPU",
+      "system": {
+        "gpu_util_available": false
+      },
       "reason": "同华为，NNAPI 兼容性差"
     }
   ],
