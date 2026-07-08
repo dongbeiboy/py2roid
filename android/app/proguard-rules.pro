@@ -11,7 +11,7 @@
 -dontwarn com.hoho.android.usbserial.**
 
 # Kotlin data classes (serialization)
--keepclassmembers class com.py2roid.** {
+-keepclassmembers class com.xz.py2roid.** {
     @kotlin.Metadata <fields>;
 }
 

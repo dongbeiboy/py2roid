@@ -1,33 +1,31 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.chaquo.python")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Chaquopy 用 apply(plugin) 而非 plugins {} 块
+// plugins {} 块在 Kotlin DSL 下可能无法为 python {} 生成访问器
+apply(plugin = "com.chaquo.python")
+
 android {
-    namespace = "com.py2roid"
+    namespace = "com.xz.py2roid"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.py2roid"
+        applicationId = "com.xz.py2roid"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
-
-        python {
-            version = "3.12"
-            buildPython("D:\\python\\3.12.9\\python.exe")
-            pip {
-                install("numpy")
-                install("Pillow")
-            }
+            abiFilters += listOf("arm64-v8a")
         }
     }
+
+    // python { } 配置在 python.gradle 中（Groovy），通过 apply(from) 引入
+    // 避免 Kotlin DSL 访问器生成问题——Chaquopy 插件实现细节
 
     buildTypes {
         release {
@@ -50,10 +48,6 @@ android {
 
     buildFeatures {
         compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
     }
 }
 

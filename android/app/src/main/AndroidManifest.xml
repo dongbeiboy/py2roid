@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
-        android:name="com.py2roid.Py2roidApp"
+        android:name="com.xz.py2roid.Py2roidApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -21,7 +21,7 @@
         android:theme="@style/Theme.Py2roid">
 
         <activity
-            android:name="com.py2roid.MainActivity"
+            android:name="com.xz.py2roid.MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>
@@ -39,7 +39,7 @@
         </activity>
 
         <service
-            android:name="com.py2roid.service.DetectionForegroundService"
+            android:name="com.xz.py2roid.service.DetectionForegroundService"
             android:foregroundServiceType="camera|connectedDevice"
             android:exported="false" />
     </application>

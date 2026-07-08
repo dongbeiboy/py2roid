@@ -1,0 +1,10 @@
+// Chaquopy Python 配置
+// Groovy 脚本，通过 apply(from) 引入，避免 Kotlin DSL 访问器生成问题
+python {
+    version = "3.12"
+    buildPython "D:\\python\\3.12.9\\python.exe"
+    pip {
+        install "numpy"
+        install "Pillow"
+    }
+}

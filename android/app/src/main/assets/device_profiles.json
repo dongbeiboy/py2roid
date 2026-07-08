@@ -1,0 +1,42 @@
+{
+  "description": "py2roid 推理后端自动调度配置",
+  "version": 1,
+  "rules": [
+    {
+      "match": { "manufacturer": "vivo" },
+      "backend": "CPU",
+      "reason": "MTK 天玑 NNAPI Split 算子不兼容 YOLOv8"
+    },
+    {
+      "match": { "manufacturer": "xiaomi" },
+      "backend": "NNAPI",
+      "reason": "骁龙 8 系 NNAPI 兼容性良好"
+    },
+    {
+      "match": { "manufacturer": "OnePlus" },
+      "backend": "NNAPI",
+      "reason": "骁龙 NNAPI 兼容"
+    },
+    {
+      "match": { "manufacturer": "samsung" },
+      "backend": "NNAPI",
+      "reason": "Exynos/骁龙 NNAPI 支持良好"
+    },
+    {
+      "match": { "manufacturer": "google" },
+      "backend": "NNAPI",
+      "reason": "Pixel Tensor NNAPI 支持"
+    },
+    {
+      "match": { "manufacturer": "HUAWEI" },
+      "backend": "CPU",
+      "reason": "麒麟 NPU 需通过 HiAI，NNAPI 不可靠"
+    },
+    {
+      "match": { "manufacturer": "honor" },
+      "backend": "CPU",
+      "reason": "同华为，NNAPI 兼容性差"
+    }
+  ],
+  "default": "NNAPI"
+}
