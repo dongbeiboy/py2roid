@@ -1,0 +1,53 @@
+# ============================================================
+# py2roid .gitignore
+# Android Gradle 项目 + Python 工具 + 开发环境杂项
+# ============================================================
+
+# ---- Android / Gradle ----
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.iml
+android/.idea/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.log
+gen/
+
+# ---- Gradle Wrapper (保留 wrapper jar + properties，忽略本地分发包) ----
+# gradle-wrapper.properties 必须提交，它锁定 Gradle 版本供全组使用
+# 分发包在 ~/.gradle/wrapper/dists/ 中由 gradlew 自动管理
+android/gradle-*.zip
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# ---- ONNX 模型（大文件，需手动下载） ----
+*.onnx
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---- 项目文档（非代码，不入库） ----
+plan.md
+
+# ---- 环境 / 凭据 ----
+.env
+*.local
