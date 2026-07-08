@@ -1,0 +1,61 @@
+# ============================================================
+# py2roid — 打 tag 自动构建 APK 并发布 GitHub Release
+# ============================================================
+# 触发方式：推送符合 v*.*.* 模式的 tag，例如：
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# ============================================================
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+        working-directory: android
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: android
+
+      - name: Locate APK
+        id: locate-apk
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
+          echo "apk-path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK_PATH"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: py2roid ${{ github.ref_name }}
+          body: |
+            ## py2roid ${{ github.ref_name }}
+
+            ### 下载
+            - `py2roid-${{ github.ref_name }}.apk` — Release APK
+
+            > 由 GitHub Actions 自动构建。
+          files: ${{ steps.locate-apk.outputs.apk-path }}
+          generate_release_notes: true
