@@ -3,6 +3,7 @@ package com.xz.py2roid.ui
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.ViewModel
 import com.xz.py2roid.util.Logger
+import com.xz.py2roid.vision.VcapEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,6 +85,16 @@ class MainViewModel : ViewModel() {
     fun updateBackend(backend: InferenceBackend) {
         _settings.value = _settings.value.copy(inferenceBackend = backend)
     }
+
+    // 可用后端集合（启动时检测一次）
+    val enabledBackends: Set<InferenceBackend> = buildSet {
+        add(InferenceBackend.Auto)
+        add(InferenceBackend.CPU)
+        add(InferenceBackend.XNNPACK)
+        add(InferenceBackend.NNAPI)
+        if (VcapEngine.isSdkAvailable()) add(InferenceBackend.VCAP)
+    }
+
     fun updateDebugOverlay(enabled: Boolean) {
         _settings.value = _settings.value.copy(debugOverlayEnabled = enabled)
     }

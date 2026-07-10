@@ -18,8 +18,8 @@ android {
         applicationId = "com.xz.py2roid"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.6"
+        versionCode = 7
+        versionName = "1.0.7"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -100,6 +100,9 @@ dependencies {
 
     // ONNX Runtime
     implementation("com.microsoft.onnxruntime:onnxruntime-android:latest.release")
+
+    // VCAP (vivo AI 推理加速)
+    implementation(files("libs/vivo_vcap_v3.0.0.0.jar"))
 
     // USB Serial
     implementation("com.github.mik3y:usb-serial-for-android:3.7.3")

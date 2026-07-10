@@ -66,6 +66,7 @@ fun MainScreen(
             AppScreen.Settings -> {
                 SettingsScreen(
                     settings = settings,
+                    enabledBackends = viewModel.enabledBackends,
                     onConfidenceChange = viewModel::updateConfidence,
                     onIouChange = viewModel::updateIou,
                     onCommModeChange = viewModel::updateCommMode,

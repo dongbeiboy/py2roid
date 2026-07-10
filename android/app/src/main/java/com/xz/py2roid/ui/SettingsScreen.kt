@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 
 data class AppSettings(
     val confidenceThreshold: Float = 0.5f,
@@ -43,12 +44,13 @@ data class AppSettings(
 )
 
 enum class CommMode(val label: String) { USB("USB"), WiFi("WiFi"), Off("关闭") }
-enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"), QNN("QNN"), VCAP("VCAP") }
+enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"), VCAP("VCAP") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
+    enabledBackends: Set<InferenceBackend> = InferenceBackend.entries.toSet(),
     onConfidenceChange: (Float) -> Unit,
     onIouChange: (Float) -> Unit,
     onCommModeChange: (CommMode) -> Unit,
@@ -108,17 +110,48 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
             SectionHeader("推理后端")
             SettingsCard {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    InferenceBackend.entries.forEachIndexed { i, b ->
-                        SegmentedButton(
-                            selected = settings.inferenceBackend == b,
-                            onClick = { onBackendChange(b) },
-                            shape = SegmentedButtonDefaults.itemShape(i, InferenceBackend.entries.size),
-                            colors = SegmentedButtonDefaults.colors(
-                                activeContainerColor = MaterialTheme.colorScheme.primary,
-                                inactiveContainerColor = Color(0xFF2A2A2A)
-                            )
-                        ) { Text(b.label, fontSize = 12.sp) }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // 第一行：Auto / CPU / XNNPACK
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        val row1 = InferenceBackend.entries.take(3)
+                        row1.forEachIndexed { i, b ->
+                            val enabled = b in enabledBackends
+                            SegmentedButton(
+                                selected = settings.inferenceBackend == b,
+                                onClick = { if (enabled) onBackendChange(b) },
+                                enabled = enabled,
+                                shape = SegmentedButtonDefaults.itemShape(i, row1.size),
+                                colors = SegmentedButtonDefaults.colors(
+                                    activeContainerColor = MaterialTheme.colorScheme.primary,
+                                    inactiveContainerColor = Color(0xFF2A2A2A),
+                                    disabledActiveContainerColor = Color(0xFF2A2A2A),
+                                    disabledInactiveContainerColor = Color(0xFF1A1A1A),
+                                    disabledActiveContentColor = Color.Gray,
+                                    disabledInactiveContentColor = Color.Gray
+                                )
+                            ) { Text(b.label, fontSize = 12.sp) }
+                        }
+                    }
+                    // 第二行：NNAPI / VCAP
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        val row2 = InferenceBackend.entries.drop(3)
+                        row2.forEachIndexed { i, b ->
+                            val enabled = b in enabledBackends
+                            SegmentedButton(
+                                selected = settings.inferenceBackend == b,
+                                onClick = { if (enabled) onBackendChange(b) },
+                                enabled = enabled,
+                                shape = SegmentedButtonDefaults.itemShape(i, row2.size),
+                                colors = SegmentedButtonDefaults.colors(
+                                    activeContainerColor = MaterialTheme.colorScheme.primary,
+                                    inactiveContainerColor = Color(0xFF2A2A2A),
+                                    disabledActiveContainerColor = Color(0xFF2A2A2A),
+                                    disabledInactiveContainerColor = Color(0xFF1A1A1A),
+                                    disabledActiveContentColor = Color.Gray,
+                                    disabledInactiveContentColor = Color.Gray
+                                )
+                            ) { Text(b.label, fontSize = 12.sp) }
+                        }
                     }
                 }
             }
@@ -148,10 +181,14 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val context = LocalContext.current
+                val versionName = try {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+                } catch (_: Exception) { "?" }
                 Column(modifier = Modifier.padding(16.dp)) {
                     AboutRow("应用", "py2roid")
-                    AboutRow("版本", "1.0.0")
-                    AboutRow("视觉引擎", "ONNX Runtime + NNAPI")
+                    AboutRow("版本", versionName)
+                    AboutRow("视觉引擎", "ONNX Runtime + ${settings.inferenceBackend.label}")
                     AboutRow("Python", "3.12 (Chaquopy)")
                 }
             }

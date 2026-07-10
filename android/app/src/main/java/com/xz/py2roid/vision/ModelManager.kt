@@ -71,11 +71,14 @@ class ModelManager(private val context: Context) {
         }
 
         return dir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".onnx") }
+            ?.filter { it.isFile && (it.name.endsWith(".onnx") || it.name.endsWith(".vaim")) }
             ?.map { file ->
+                val isVaim = file.name.endsWith(".vaim")
                 ModelInfo(
                     name = file.name,
-                    path = file.absolutePath
+                    path = file.absolutePath,
+                    inputName = if (isVaim) "images" else "images",
+                    outputName = if (isVaim) "output0" else "output0"
                 )
             }
             ?: emptyList()
