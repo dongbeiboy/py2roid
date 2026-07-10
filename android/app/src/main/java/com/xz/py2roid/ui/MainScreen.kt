@@ -34,12 +34,14 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MainScreen(
     viewModel: MainViewModel = viewModel(),
-    modelManager: ModelManager? = null
+    modelManager: ModelManager? = null,
+    startImmediately: Boolean = false
 ) {
     val screen by viewModel.screen.collectAsState()
     val hudInfo by viewModel.hudInfo.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val showModelPicker by viewModel.showModelPicker.collectAsState()
+    val showCommPicker by viewModel.showCommPicker.collectAsState()
     val models by viewModel.models.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val detectionBoxes by viewModel.detectionBoxes.collectAsState()
@@ -67,9 +69,9 @@ fun MainScreen(
     ) {
         val isLandscape = maxWidth > maxHeight
 
-        // 启动时按设置决定进入配置页还是直接检测
+        // 启动时按设置决定进入配置页还是直接检测（ADB 模式跳过配置页）
         LaunchedEffect(Unit) {
-            if (settings.startOnConfig) {
+            if (settings.startOnConfig && !startImmediately) {
                 viewModel.navigateToConfig()
             }
         }
@@ -140,7 +142,7 @@ fun MainScreen(
                         isLandscape = true,
                         onSettingsClick = viewModel::navigateToSettings,
                         onModelClick = viewModel::showModelPicker,
-                        onCommClick = { },
+                        onCommClick = viewModel::showCommPicker,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                     )
@@ -148,7 +150,7 @@ fun MainScreen(
                     ControlBar(
                         onSettingsClick = viewModel::navigateToSettings,
                         onModelClick = viewModel::showModelPicker,
-                        onCommClick = { },
+                        onCommClick = viewModel::showCommPicker,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .navigationBarsPadding()
@@ -209,6 +211,16 @@ fun MainScreen(
             onModelSelected = viewModel::selectModel,
             onImportClick = { importLauncher.launch(arrayOf("*/*")) },
             onDismiss = viewModel::hideModelPicker
+        )
+    }
+
+    // 通讯模式选择 BottomSheet
+    if (showCommPicker) {
+        CommPicker(
+            commModes = CommMode.entries,
+            selectedMode = settings.commMode,
+            onModeSelected = viewModel::updateCommMode,
+            onDismiss = viewModel::hideCommPicker
         )
     }
 }

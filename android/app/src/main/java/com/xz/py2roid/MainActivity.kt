@@ -13,8 +13,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import android.content.pm.ApplicationInfo
 import com.xz.py2roid.bridge.PythonBridge
 import com.xz.py2roid.service.DetectionForegroundService
@@ -37,12 +37,14 @@ import com.xz.py2roid.vision.ModelManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var modelManager: ModelManager
     private lateinit var settingsStore: SettingsStore
     private lateinit var permissionHelper: PermissionHelper
+    private lateinit var viewModel: MainViewModel
     private var cameraController: CameraController? = null
     private var detector: Detector? = null
     private var isRunning = false
@@ -52,6 +54,9 @@ class MainActivity : ComponentActivity() {
     private var adbModelOverride: String? = null
     private var adbBackendOverride: InferenceBackend? = null
 
+    /** ADB 传参时跳过配置页直接检测 */
+    private val adbActive get() = adbModelOverride != null || adbBackendOverride != null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -60,6 +65,7 @@ class MainActivity : ComponentActivity() {
         modelManager = ModelManager(this)
         settingsStore = SettingsStore(this)
         permissionHelper = PermissionHelper(this)
+        viewModel = ViewModelProvider(this).get(MainViewModel::class.java)
 
         // [DEBUG] ADB intent extra 覆写（仅 debug 包有效，存字段不走 prefs 避免 LaunchedEffect 覆盖）
         // adb shell am start -n com.xz.py2roid/.MainActivity \
@@ -85,6 +91,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             modelManager.initModels()
             Logger.d("Models initialized")
+            withContext(Dispatchers.Main) {
+                viewModel.onModelsReady()
+            }
         }
 
         // 初始化 Python 桥接
@@ -93,12 +102,13 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val viewModel: MainViewModel = viewModel()
             val previewView by viewModel.previewView.collectAsState()
             val screen by viewModel.screen.collectAsState()
+            val cameraPermissionGranted by viewModel.cameraPermissionGranted.collectAsState()
+            val modelsReady by viewModel.modelsReady.collectAsState()
 
-            // 当 previewView 就绪且权限已授予，启动相机
-            if (previewView != null && permissionHelper.hasCamera() && !isRunning) {
+            // 当 previewView 就绪、权限已授予且模型已就绪，启动相机
+            if (previewView != null && cameraPermissionGranted && modelsReady && !isRunning) {
                 isRunning = true
                 lifecycleScope.launch {
                     startDetection(viewModel, previewView!!)
@@ -172,13 +182,14 @@ class MainActivity : ComponentActivity() {
             }
 
             Py2roidTheme {
-                MainScreen(viewModel = viewModel, modelManager = modelManager)
+                MainScreen(viewModel = viewModel, modelManager = modelManager, startImmediately = adbActive)
             }
         }
 
         // 权限请求（触发点）
         permissionHelper.requestCamera {
             Logger.i("Camera permission granted, ready to start")
+            viewModel.onCameraPermissionGranted()
         }
 
         // OriginOS 检测
@@ -229,9 +240,6 @@ class MainActivity : ComponentActivity() {
         try {
             val modelName = adbModelOverride ?: settingsStore.getSelectedModel()
             val backend = adbBackendOverride ?: settings.inferenceBackend
-            // 同步 ADB override 到 ViewModel，避免 LaunchedEffect 写回旧值
-            if (adbModelOverride != null) viewModel.selectModel(modelName)
-            if (adbBackendOverride != null) viewModel.updateBackend(backend)
             val models = modelManager.scanModels()
             viewModel.updateModels(models.map { com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize) })
             val modelPath = models.find { it.name == modelName }?.path

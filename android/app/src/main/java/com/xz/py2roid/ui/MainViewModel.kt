@@ -48,6 +48,9 @@ class MainViewModel : ViewModel() {
     private val _showModelPicker = MutableStateFlow(false)
     val showModelPicker: StateFlow<Boolean> = _showModelPicker.asStateFlow()
 
+    private val _showCommPicker = MutableStateFlow(false)
+    val showCommPicker: StateFlow<Boolean> = _showCommPicker.asStateFlow()
+
     private val _models = MutableStateFlow<List<ModelItem>>(
         listOf(ModelItem(name = "yolov8n.onnx", inputSize = "640x640", classes = 80))
     )
@@ -64,6 +67,14 @@ class MainViewModel : ViewModel() {
     private val _detectionBoxes = MutableStateFlow<List<BoundingBox>>(emptyList())
     val detectionBoxes: StateFlow<List<BoundingBox>> = _detectionBoxes.asStateFlow()
 
+    // 相机权限已授予
+    private val _cameraPermissionGranted = MutableStateFlow(false)
+    val cameraPermissionGranted: StateFlow<Boolean> = _cameraPermissionGranted.asStateFlow()
+
+    // 模型文件已就绪
+    private val _modelsReady = MutableStateFlow(false)
+    val modelsReady: StateFlow<Boolean> = _modelsReady.asStateFlow()
+
     // 检测运行状态
     private val _isDetecting = MutableStateFlow(false)
     val isDetecting: StateFlow<Boolean> = _isDetecting.asStateFlow()
@@ -78,6 +89,10 @@ class MainViewModel : ViewModel() {
     fun hideModelPicker() { _showModelPicker.value = false }
     fun selectModel(name: String) { _selectedModel.value = name }
     fun updateModels(items: List<ModelItem>) { _models.value = items }
+
+    // Comm picker
+    fun showCommPicker() { _showCommPicker.value = true }
+    fun hideCommPicker() { _showCommPicker.value = false }
 
     // Settings
     fun updateConfidence(value: Float) {
@@ -119,6 +134,12 @@ class MainViewModel : ViewModel() {
 
     // PreviewView
     fun setPreviewView(view: PreviewView) { _previewView.value = view }
+
+    // Camera permission granted (called from permission callback)
+    fun onCameraPermissionGranted() { _cameraPermissionGranted.value = true }
+
+    // Models ready (called after initModels completes)
+    fun onModelsReady() { _modelsReady.value = true }
 
     // Detection boxes
     fun updateBoxes(boxes: List<BoundingBox>) { _detectionBoxes.value = boxes }

@@ -74,6 +74,8 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
                 }
                 else -> {
                     options.setNumThreads(4)
+                    // onnx2tf 导出的模型含 PAD op，XNNPACK delegate 在 2.16.1 上有兼容问题
+                    options.setUseXNNPACK(false)
                     _provider = "TFLite"
                 }
             }
@@ -110,13 +112,21 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             chwArray
         }
 
-        val inputShape = intArrayOf(1, _inputHeight, _inputWidth, _inputChannels)
-        val outputArray = Array(1) { FloatArray(outputSize) }
+        // 用 ByteBuffer 方式传输入输出，绕过 writeMultiDimensionalArray 的 shape 校验
+        val inputBuffer = java.nio.ByteBuffer.allocateDirect(nhwcArray.size * 4)
+        inputBuffer.order(java.nio.ByteOrder.nativeOrder())
+        inputBuffer.asFloatBuffer().put(nhwcArray)
 
-        interp.run(nhwcArray, outputArray)
+        val outputBuffer = java.nio.ByteBuffer.allocateDirect(outputSize * 4)
+        outputBuffer.order(java.nio.ByteOrder.nativeOrder())
 
-        // 输出保持原始格式（Detector 负责解码）
-        return outputArray[0]
+        val outputs = java.util.HashMap<Int, Any>()
+        outputs[0] = outputBuffer
+        interp.runForMultipleInputsOutputs(arrayOf<Any>(inputBuffer), outputs)
+
+        val outArray = FloatArray(outputSize)
+        outputBuffer.asFloatBuffer().get(outArray)
+        return outArray
     }
 
     override fun close() {
