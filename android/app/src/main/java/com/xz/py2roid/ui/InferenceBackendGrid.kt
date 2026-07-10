@@ -1,5 +1,12 @@
 package com.xz.py2roid.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -68,17 +76,33 @@ private fun BackendCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bgColor = when {
+    val targetBg = when {
         !enabled -> Color(0xFF1A1A1A)
         selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
         else -> Color(0xFF2A2A2A)
     }
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-    val textColor = when {
+    val targetBorder = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+    val targetText = when {
         !enabled -> Color.Gray
         selected -> MaterialTheme.colorScheme.primary
         else -> Color.White
     }
+
+    val bgColor by animateColorAsState(
+        targetValue = targetBg,
+        animationSpec = tween(300),
+        label = "bg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = targetBorder,
+        animationSpec = tween(300),
+        label = "border"
+    )
+    val textColor by animateColorAsState(
+        targetValue = targetText,
+        animationSpec = tween(300),
+        label = "text"
+    )
 
     Surface(
         modifier = modifier
@@ -94,14 +118,20 @@ private fun BackendCell(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Text(label, fontSize = 12.sp, color = textColor)
-                if (selected) {
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "✓",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+                AnimatedVisibility(
+                    visible = selected,
+                    enter = fadeIn(tween(200)) + scaleIn(tween(200)),
+                    exit = fadeOut(tween(200)) + scaleOut(tween(200))
+                ) {
+                    Row {
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "✓",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

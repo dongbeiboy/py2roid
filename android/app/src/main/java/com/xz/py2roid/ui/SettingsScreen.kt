@@ -48,7 +48,25 @@ data class AppSettings(
 )
 
 enum class CommMode(val label: String) { USB("USB"), WiFi("WiFi"), Off("关闭") }
-enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"), VCAP("VCAP"), TFLITE("TFLite"), TFLITE_GPU("TFLite GPU"), TFLITE_NNAPI("TFLite NNAPI") }
+enum class InferenceBackend(val label: String) {
+    Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"),
+    VCAP("VCAP"),
+    TFLITE("TFLite"), TFLITE_GPU("TFLite GPU"), TFLITE_NNAPI("TFLite NNAPI");
+
+    companion object {
+        /** 根据模型文件名过滤可用后端 */
+        fun backendsForModel(
+            modelName: String,
+            allEnabled: Set<InferenceBackend>
+        ): Set<InferenceBackend> {
+            val isTflite = modelName.endsWith(".tflite", ignoreCase = true)
+            return allEnabled.filter { b ->
+                if (isTflite) b.name.startsWith("TFLITE")
+                else !b.name.startsWith("TFLITE")
+            }.toSet() + Auto // Auto 始终可用
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

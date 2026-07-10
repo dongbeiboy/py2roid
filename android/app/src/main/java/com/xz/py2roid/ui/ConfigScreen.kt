@@ -7,6 +7,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +29,16 @@ fun ConfigScreen(
     onStart: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    // 模型切换时，若当前后端不兼容则回退到 Auto
+    val modelBackends = remember(selectedModel, enabledBackends) {
+        InferenceBackend.backendsForModel(selectedModel, enabledBackends)
+    }
+    LaunchedEffect(selectedModel) {
+        if (settings.inferenceBackend !in modelBackends) {
+            onBackendChange(InferenceBackend.Auto)
+        }
+    }
+
     Scaffold(
         modifier = Modifier.statusBarsPadding(),
         topBar = {
@@ -91,7 +103,7 @@ fun ConfigScreen(
 
             InferenceBackendGrid(
                 selectedBackend = settings.inferenceBackend,
-                enabledBackends = enabledBackends,
+                enabledBackends = modelBackends,
                 onBackendChange = onBackendChange
             )
 
