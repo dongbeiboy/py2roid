@@ -10,6 +10,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xz.py2roid.bridge.PythonBridge
@@ -88,6 +90,33 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // 实时同步设置 → Detector（阈值滑块即时生效）
+            val currentSettings by viewModel.settings.collectAsState()
+            val prevBackend = remember { mutableStateOf(currentSettings.inferenceBackend) }
+            LaunchedEffect(currentSettings) {
+                detector?.let { d ->
+                    d.confidenceThreshold = currentSettings.confidenceThreshold
+                    d.iouThreshold = currentSettings.iouThreshold
+                    // 推理后端切换 → 重新加载模型
+                    if (currentSettings.inferenceBackend != prevBackend.value) {
+                        prevBackend.value = currentSettings.inferenceBackend
+                        val modelName = settingsStore.getSelectedModel()
+                        val models = modelManager.scanModels()
+                        val modelPath = models.find { it.name == modelName }?.path
+                        if (modelPath != null) {
+                            Logger.i("Reloading model with backend=${currentSettings.inferenceBackend}")
+                            launch(Dispatchers.IO) {
+                                try {
+                                    d.loadModel(modelPath, currentSettings.inferenceBackend)
+                                } catch (e: Exception) {
+                                    Logger.e("Failed to reload model", e)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Py2roidTheme {
                 MainScreen(viewModel = viewModel)
             }
@@ -143,6 +172,8 @@ class MainActivity : ComponentActivity() {
             if (modelPath != null) {
                 det.confidenceThreshold = settings.confidenceThreshold
                 det.iouThreshold = settings.iouThreshold
+                Logger.i("[Device] ${Build.MANUFACTURER} ${Build.MODEL} SDK=${Build.VERSION.SDK_INT}, " +
+                        "backend=${settings.inferenceBackend}, conf=${settings.confidenceThreshold}")
                 det.loadModel(modelPath, settings.inferenceBackend)
                 Logger.i("Model loaded: $modelName")
             } else {
@@ -162,9 +193,20 @@ class MainActivity : ComponentActivity() {
             onFrame = { imageProxy ->
                 val image = imageProxy.image
                 if (image != null) {
+                    val frameStart = System.currentTimeMillis()
+                    val imgW = imageProxy.width
+                    val imgH = imageProxy.height
                     try {
                         val tensor = ImagePreprocessor.preprocess(image)
-                        det.detect(tensor, 640, 640)
+                        val preMs = System.currentTimeMillis() - frameStart
+                        val results = det.detect(tensor, 640, 640)
+                        val totalMs = System.currentTimeMillis() - frameStart
+                        if (results.isNotEmpty()) {
+                            val topConf = results.maxOf { it.confidence }
+                            Logger.i("[Perf] ${imgW}x${imgH} pre=${preMs}ms inf=${totalMs-preMs}ms total=${totalMs}ms det=${results.size} top=${String.format("%.2f", topConf)}")
+                        } else if (totalMs > 50) {
+                            Logger.d("[Perf] ${imgW}x${imgH} pre=${preMs}ms inf=${totalMs-preMs}ms total=${totalMs}ms det=0")
+                        }
                     } catch (e: Exception) {
                         Logger.e("[M01] Frame error: ${e.message}")
                     } finally {
@@ -225,6 +267,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (isRunning) {
+            Logger.d("Resuming camera after screen unlock")
+            cameraController?.startCamera()
+        }
     }
 
     override fun onDestroy() {

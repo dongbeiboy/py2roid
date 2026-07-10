@@ -43,7 +43,7 @@ data class AppSettings(
 )
 
 enum class CommMode(val label: String) { USB("USB"), WiFi("WiFi"), Off("关闭") }
-enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), NNAPI("NNAPI"), VCAP("VCAP") }
+enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"), QNN("QNN"), VCAP("VCAP") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,7 +82,7 @@ fun SettingsScreen(
         ) {
             SectionHeader("检测参数")
             SettingsCard {
-                SliderWithLabel("置信度阈值", settings.confidenceThreshold, onConfidenceChange, 0.1f..0.9f, "%.2f")
+                SliderWithLabel("置信度阈值", settings.confidenceThreshold, onConfidenceChange, 0.1f..0.95f, "%.2f")
                 Spacer(Modifier.height(8.dp))
                 SliderWithLabel("IoU 阈值", settings.iouThreshold, onIouChange, 0.1f..0.9f, "%.2f")
             }
@@ -118,7 +118,7 @@ fun SettingsScreen(
                                 activeContainerColor = MaterialTheme.colorScheme.primary,
                                 inactiveContainerColor = Color(0xFF2A2A2A)
                             )
-                        ) { Text(b.label, fontSize = 13.sp) }
+                        ) { Text(b.label, fontSize = 12.sp) }
                     }
                 }
             }

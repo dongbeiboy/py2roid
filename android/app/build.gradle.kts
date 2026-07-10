@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,8 +18,8 @@ android {
         applicationId = "com.xz.py2roid"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 6
+        versionName = "1.0.6"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -27,9 +29,32 @@ android {
     // python { } 配置在 python.gradle 中（Groovy），通过 apply(from) 引入
     // 避免 Kotlin DSL 访问器生成问题——Chaquopy 插件实现细节
 
+    // 签名信息优先级：环境变量 > keystore.properties 文件
+    // GitHub CI 通过 secrets 注入环境变量，本地开发用 keystore.properties（已 gitignore）
+    signingConfigs {
+        create("release") {
+            val keystorePropsFile = rootProject.file("keystore.properties")
+            val keystoreProps = if (keystorePropsFile.exists()) {
+                Properties().apply { load(keystorePropsFile.inputStream()) }
+            } else null
+
+            storeFile = file("release.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+                ?: keystoreProps?.getProperty("keystore.password")
+                ?: ""
+            keyAlias = System.getenv("KEY_ALIAS")
+                ?: keystoreProps?.getProperty("keystore.alias")
+                ?: "py2roid"
+            keyPassword = System.getenv("KEY_PASSWORD")
+                ?: keystoreProps?.getProperty("keystore.keyPassword")
+                ?: ""
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

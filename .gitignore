@@ -23,6 +23,10 @@ gen/
 # 分发包在 ~/.gradle/wrapper/dists/ 中由 gradlew 自动管理
 android/gradle-*.zip
 
+# ---- 签名文件（敏感，禁止提交） ----
+android/app/release.keystore
+android/keystore.properties
+
 # ---- Python ----
 __pycache__/
 *.py[cod]

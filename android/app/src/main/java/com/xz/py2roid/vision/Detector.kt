@@ -59,16 +59,34 @@ class Detector(
     private var modelInputWidth: Int = 640
     private var modelInputHeight: Int = 640
 
+    // NNAPI 垃圾输出自动回退
+    @Volatile
+    private var nnapiGarbageDetected = false
+    private var currentModelPath: String? = null
+
+    /** 快速验证模型输出是否合理（NNAPI 在某些芯片上返回全零） */
+    private fun validateOutput(outputArray: FloatArray, numProposals: Int, numClasses: Int): Boolean {
+        val step = (numProposals / 50).coerceAtLeast(1)
+        var maxConf = 0f
+        for (s in 0 until numProposals step step) {
+            for (c in 0 until numClasses.coerceAtMost(80)) {
+                val p = outputArray[(4 + c) * numProposals + s]
+                if (p > maxConf) maxConf = p
+            }
+        }
+        return maxConf > 0.01f  // 任意类概率 >1% 认为输出有效
+    }
+
     /**
      * Load a model from the given path and configure the specified backend.
      * Thread-safe via @Synchronized.
      */
     @Synchronized
     fun loadModel(modelPath: String, backend: InferenceBackend) {
-        try {
-            // Close existing session/environment
-            closeSession()
+        currentModelPath = modelPath
+        nnapiGarbageDetected = false
 
+        try {
             ortEnvironment = OrtEnvironment.getEnvironment()
 
             val sessionOptions = OrtSession.SessionOptions().apply {
@@ -79,6 +97,15 @@ class Detector(
                         currentProvider = recommended.name
                         when (recommended) {
                             InferenceBackend.NNAPI -> addNnapi()
+                            InferenceBackend.XNNPACK -> {
+                                try {
+                                    addXnnpack(emptyMap())
+                                } catch (e: Exception) {
+                                    setIntraOpNumThreads(4)
+                                    currentProvider = "CPU"
+                                    Log.w(TAG, "[D01] Auto: XNNPACK unavailable, fallback CPU")
+                                }
+                            }
                             else -> setIntraOpNumThreads(4)
                         }
                     }
@@ -86,9 +113,31 @@ class Detector(
                         setIntraOpNumThreads(4)
                         currentProvider = "CPU"
                     }
+                    InferenceBackend.XNNPACK -> {
+                        setIntraOpNumThreads(4)
+                        try {
+                            addXnnpack(emptyMap())
+                            currentProvider = "XNNPACK"
+                            Log.i(TAG, "[D02] XNNPACK EP enabled")
+                        } catch (e: Exception) {
+                            currentProvider = "CPU"
+                            Log.w(TAG, "[D02] XNNPACK not available, fallback CPU", e)
+                        }
+                    }
                     InferenceBackend.NNAPI -> {
                         addNnapi()
                         currentProvider = "NNAPI"
+                    }
+                    InferenceBackend.QNN -> {
+                        setIntraOpNumThreads(4)
+                        try {
+                            addQnn(emptyMap())
+                            currentProvider = "QNN"
+                            Log.i(TAG, "[D02] QNN EP enabled")
+                        } catch (e: Exception) {
+                            currentProvider = "CPU"
+                            Log.w(TAG, "[D02] QNN not available (not in standard build), fallback CPU", e)
+                        }
                     }
                     InferenceBackend.VCAP -> {
                         setIntraOpNumThreads(4)
@@ -102,8 +151,8 @@ class Detector(
                 ortSession = ortEnvironment!!.createSession(modelPath, sessionOptions)
             } catch (e: Exception) {
                 val shouldRetryCpu = when (backend) {
-                    InferenceBackend.NNAPI -> true
-                    InferenceBackend.Auto -> currentProvider == "NNAPI"
+                    InferenceBackend.NNAPI, InferenceBackend.XNNPACK, InferenceBackend.QNN -> true
+                    InferenceBackend.Auto -> currentProvider == "NNAPI" || currentProvider == "XNNPACK" || currentProvider == "QNN"
                     else -> false
                 }
                 if (shouldRetryCpu) {
@@ -155,6 +204,15 @@ class Detector(
      */
     @Synchronized
     fun detect(inputTensor: FloatArray, inputWidth: Int, inputHeight: Int): List<DetectionResult> {
+        // NNAPI 垃圾输出自动回退到 CPU
+        if (nnapiGarbageDetected && currentProvider == "NNAPI") {
+            Log.w(TAG, "[Fallback] NNAPI garbage detected, reloading with CPU")
+            currentModelPath?.let { path ->
+                loadModel(path, InferenceBackend.CPU)
+            }
+            nnapiGarbageDetected = false
+        }
+
         val env = ortEnvironment ?: throw IllegalStateException("Model not loaded")
         val session = ortSession ?: throw IllegalStateException("Model not loaded")
 
@@ -204,6 +262,43 @@ class Detector(
             val numFeatures = totalElements / numProposals
             val numClasses = numFeatures - 4
             Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses")
+
+            // 抽样检查原始输出值 - 前 10 个 proposal
+            val sampleStr = (0 until 10.coerceAtMost(numProposals)).joinToString { i ->
+                val cx = outputArray[i]
+                val cy = outputArray[1 * numProposals + i]
+                val w = outputArray[2 * numProposals + i]
+                val h = outputArray[3 * numProposals + i]
+                val p0 = outputArray[4 * numProposals + i]
+                val p10 = outputArray[(4 + 10) * numProposals + i]
+                "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},p10=${"%.4f".format(p10)})"
+            }
+            Log.d(TAG, "[Sample] first 10: $sampleStr")
+
+            // 抽样统计全局置信度分布（每 100 个 proposal 采一个）
+            val diagStep = (numProposals / 100).coerceAtLeast(1)
+            var diagMaxConf = 0f
+            var diagHighCount = 0
+            run {
+                for (s in 0 until numProposals step diagStep) {
+                    var best = 0f
+                    for (c in 0 until numClasses.coerceAtMost(80)) {
+                        val p = outputArray[(4 + c) * numProposals + s]
+                        if (p > best) best = p
+                    }
+                    if (best > diagMaxConf) diagMaxConf = best
+                    if (best > 0.1f) diagHighCount++
+                }
+            }
+            Log.d(TAG, "[Dist] sampled=${numProposals/diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")
+
+            // NNAPI 垃圾输出检测：所有类概率接近零 → 标记回退（下一帧生效）
+            if (diagMaxConf < 0.01f && currentProvider == "NNAPI" && !nnapiGarbageDetected) {
+                Log.w(TAG, "[Fallback] NNAPI output all-zero (maxConf=${"%.4f".format(diagMaxConf)}), scheduling CPU fallback")
+                nnapiGarbageDetected = true
+                onPerformanceUpdate(0f, "NNAPI(garbage)", System.currentTimeMillis() - startTime)
+                return emptyList()
+            }
 
             val detections = mutableListOf<DetectionResult>()
 
@@ -256,6 +351,15 @@ class Detector(
 
             val elapsed = System.currentTimeMillis() - startTime
             val fps = if (elapsed > 0) 1000f / elapsed else 0f
+
+            // Log detection summary
+            if (finalDetections.isNotEmpty()) {
+                val classes = finalDetections.groupBy { it.label }.mapValues { it.value.size }
+                Log.i(TAG, "[Result] final=${finalDetections.size} before_nms=${detections.size} classes=$classes")
+            } else if (detections.isNotEmpty()) {
+                val maxC = detections.maxOf { it.confidence }
+                Log.d(TAG, "[Result] ${detections.size} before NMS but all suppressed by NMS, maxConf=${String.format("%.3f", maxC)}")
+            }
 
             onDetectionResult(finalDetections)
             onPerformanceUpdate(fps, currentProvider, elapsed)
