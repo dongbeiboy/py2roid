@@ -47,6 +47,9 @@ venv/
 tools/eval/coco_images/
 tools/eval/output/
 
+# ---- UI 布局预览（本地 Squircle IDE 导出，非源码） ----
+ui.xml
+
 # ---- 模型转换中间产物 ----
 *.npy
 android/app/src/main/assets/models/*_tflite/
