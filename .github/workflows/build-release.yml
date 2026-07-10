@@ -34,6 +34,24 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/gradle.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Cache Android SDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle.properties') }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
         working-directory: android
@@ -56,6 +74,51 @@ jobs:
           echo "apk-path=$APK_PATH" >> $GITHUB_OUTPUT
           echo "Found APK: $APK_PATH"
 
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          # 获取上一个 tag
+          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            # 第一个 release，取所有历史
+            RANGE="HEAD"
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+
+          # 按 conventional commit 类型分类
+          FEATS=$(git log "$RANGE" --oneline --no-decorate --grep="^feat" 2>/dev/null || true)
+          FIXES=$(git log "$RANGE" --oneline --no-decorate --grep="^fix" 2>/dev/null || true)
+          REFACTOR=$(git log "$RANGE" --oneline --no-decorate --grep="^refactor" 2>/dev/null || true)
+          DOCS=$(git log "$RANGE" --oneline --no-decorate --grep="^docs" 2>/dev/null || true)
+          PERF=$(git log "$RANGE" --oneline --no-decorate --grep="^perf" 2>/dev/null || true)
+          OTHER=$(git log "$RANGE" --oneline --no-decorate 2>/dev/null | grep -v "^[a-f0-9]\{7,9\} feat" | grep -v "^[a-f0-9]\{7,9\} fix" | grep -v "^[a-f0-9]\{7,9\} refactor" | grep -v "^[a-f0-9]\{7,9\} docs" | grep -v "^[a-f0-9]\{7,9\} perf" || true)
+
+          # 构建 Markdown 分类 changelog
+          CHANGELOG=""
+          append_section() {
+            local title="$1" content="$2"
+            if [ -n "$content" ]; then
+              CHANGELOG="${CHANGELOG}\n\n### $title\n${content}"
+            fi
+          }
+          append_section "🚀 新功能" "$FEATS"
+          append_section "🐛 Bug 修复" "$FIXES"
+          append_section "♻️ 重构" "$REFACTOR"
+          append_section "📝 文档" "$DOCS"
+          append_section "⚡ 性能优化" "$PERF"
+
+          if [ -n "$OTHER" ]; then
+            CHANGELOG="${CHANGELOG}\n\n### 🔧 其他\n${OTHER}"
+          fi
+
+          # 输出（转义换行符为 %0A 供 GITHUB_OUTPUT 使用）
+          CHANGELOG="${CHANGELOG:-*首次发布*}"
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          printf "%b" "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -63,7 +126,11 @@ jobs:
           body: |
             ## py2roid ${{ github.ref_name }}
 
-            ### 下载
+            ${{ steps.changelog.outputs.changelog }}
+
+            ---
+
+            ### 📦 下载
             - `py2roid-${{ github.ref_name }}.apk` — Release APK
 
             > 由 GitHub Actions 自动构建。

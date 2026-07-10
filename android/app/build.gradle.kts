@@ -99,7 +99,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
 
     // ONNX Runtime
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:latest.release")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
 
     // TensorFlow Lite
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
