@@ -3,6 +3,7 @@ package com.xz.py2roid
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -44,10 +45,12 @@ class MainActivity : ComponentActivity() {
     private var detector: Detector? = null
     private var isRunning = false
     private var latestTargetCount = 0
+    private var lastNotificationTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         modelManager = ModelManager(this)
         settingsStore = SettingsStore(this)
@@ -160,6 +163,12 @@ class MainActivity : ComponentActivity() {
                     frameTimeMs = frameTimeMs,
                     commState = "离线"
                 ))
+                // 每 5 秒更新一次前台通知
+                val now = System.currentTimeMillis()
+                if (now - lastNotificationTime > 5000) {
+                    lastNotificationTime = now
+                    updateServiceNotification("FPS:${"%.1f".format(fps)} 目标:$latestTargetCount $provider")
+                }
             }
         )
         detector = det
@@ -197,9 +206,9 @@ class MainActivity : ComponentActivity() {
                     val imgW = imageProxy.width
                     val imgH = imageProxy.height
                     try {
-                        val tensor = ImagePreprocessor.preprocess(image)
+                        val preResult = ImagePreprocessor.preprocess(image)
                         val preMs = System.currentTimeMillis() - frameStart
-                        val results = det.detect(tensor, 640, 640)
+                        val results = det.detect(preResult)
                         val totalMs = System.currentTimeMillis() - frameStart
                         if (results.isNotEmpty()) {
                             val topConf = results.maxOf { it.confidence }
@@ -271,6 +280,21 @@ class MainActivity : ComponentActivity() {
             Logger.d("Resuming camera after screen unlock")
             cameraController?.startCamera()
         }
+    }
+
+    /** 直接更新前台服务通知内容 */
+    private fun updateServiceNotification(text: String) {
+        try {
+            val notification = androidx.core.app.NotificationCompat.Builder(this, "py2roid_detection")
+                .setContentTitle("py2roid 检测中")
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_menu_camera)
+                .setOngoing(true)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+                .build()
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.notify(1001, notification)
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {

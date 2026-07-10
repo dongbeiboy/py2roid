@@ -103,12 +103,9 @@ object SystemStats {
             }
         }
 
-        // 兜底：任意合法温度
-        for (zone in zones) {
-            val t = readZoneTemp(zone)
-            if (t > 0) return t
-        }
-        return 0
+        // 无法匹配到相关温度，返回 -1 表示 N/A（避免返回不相关的电池温度等）
+        Logger.d("[SysStats] No matching thermal zone for ${if (isGpu) "GPU" else "CPU"}")
+        return -1
     }
 
     private fun readZoneTemp(zoneDir: File): Int {

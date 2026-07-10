@@ -2,11 +2,13 @@ package com.xz.py2roid.ui
 
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.xz.py2roid.util.Logger
 import com.xz.py2roid.vision.VcapEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 data class HudInfo(
     val fps: Float = 0f,
@@ -28,7 +30,9 @@ class MainViewModel : ViewModel() {
     }
 
     init {
-        Logger.onLog = { line -> addLogLine(line) }
+        viewModelScope.launch {
+            Logger.logFlow.collect { line -> addLogLine(line) }
+        }
     }
 
     private val _screen = MutableStateFlow(AppScreen.Main)
@@ -137,6 +141,6 @@ class MainViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        Logger.onLog = null
+        // Flow 收集随 viewModelScope 自动取消，无需手动清理
     }
 }

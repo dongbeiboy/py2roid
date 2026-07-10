@@ -1,78 +1,117 @@
 package com.xz.py2roid.vision
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.Image
 import android.util.Log
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 
+/**
+ * 预处理结果：包含推理输入张量和 letterbox 参数，
+ * 用于 Detector 还原原始图像坐标。
+ */
+data class PreprocessResult(
+    val tensor: FloatArray,
+    /** 左 padding 像素（letterbox 添加的灰边） */
+    val padLeft: Int,
+    /** 上 padding 像素 */
+    val padTop: Int,
+    /** 缩放比例（原始图像→模型输入） */
+    val scale: Float,
+    /** 原始图像宽度 */
+    val origWidth: Int,
+    /** 原始图像高度 */
+    val origHeight: Int
+)
+
 object ImagePreprocessor {
     private const val TAG = "py2roid.ImagePreprocessor"
+    /** YOLO 默认 padding 值（近似自然图像均值） */
+    private const val PAD_VALUE = 114.0
 
     private var cacheMat: Mat? = null
-    private var cacheBitmap: Bitmap? = null
 
+    /**
+     * 预处理 CameraX 帧 → 模型输入张量。
+     *
+     * 流程：NV21 → JPEG(quality=85) → Bitmap(ARGB_8888) → BGR Mat
+     * → letterbox 等比缩放 + 灰边填充到 targetWidth×targetHeight
+     * → BGR→RGB → 分通道 → float32[3×H×W] → 归一化 [0,1]
+     *
+     * 返回 [PreprocessResult]，内含张量 + 还原原始坐标所需的 letterbox 参数。
+     */
     fun preprocess(
         image: Image,
         targetWidth: Int = 640,
         targetHeight: Int = 640
-    ): FloatArray {
+    ): PreprocessResult {
         try {
             val t0 = System.currentTimeMillis()
 
-            // 直接用 Android YuvImage 做 NV21→JPEG→Bitmap 转换
-            // CameraX 的 YUV_420_888 各厂商排列不同，走 JPEG 编码器统一处理最稳
+            // ── 1. YUV_420_888 → NV21 → JPEG(quality=85) → Bitmap ──
             val nv21 = nv21FromYuv420(image)
             val yuvImage = android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21,
                 image.width, image.height, null)
             val rect = android.graphics.Rect(0, 0, image.width, image.height)
             val out = java.io.ByteArrayOutputStream()
-            yuvImage.compressToJpeg(rect, 100, out)
+            yuvImage.compressToJpeg(rect, 85, out)
             val jpegData = out.toByteArray()
             out.close()
-            // 缓存 bitmap 尺寸校验：切换前后摄像头或分辨率变化时重新创建
-            if (cacheBitmap != null && (cacheBitmap!!.width != image.width || cacheBitmap!!.height != image.height)) {
-                cacheBitmap?.recycle()
-                cacheBitmap = null
-            }
-            val bitmap = cacheBitmap ?: Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
-            cacheBitmap = bitmap
-            val jpegBitmap = android.graphics.BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size)
-            val canvas = android.graphics.Canvas(bitmap)
-            canvas.drawBitmap(jpegBitmap, 0f, 0f, null)
-            jpegBitmap.recycle()
+
+            // 统一解码为 ARGB_8888，避免部分设备返回 RGB_565
+            val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, opts)
 
             val t1 = System.currentTimeMillis()
-            Log.d(TAG, "YUV→Bitmap ${image.width}x${image.height} = ${t1-t0}ms")
-            val srcMat = bitmapToMat(bitmap)
-            val t2 = System.currentTimeMillis()
-            Log.d(TAG, "Bitmap→BGR mat = ${t2-t1}ms")
+            Log.d(TAG, "YUV→Bitmap ${image.width}x${image.height} qual=85 = ${t1 - t0}ms")
 
-            // Resize to target dimensions
+            // ── 2. Bitmap → BGR Mat ──
+            val srcMat = bitmapToMat(bitmap)
+            bitmap.recycle()
+            val srcW = srcMat.width()
+            val srcH = srcMat.height()
+            val t2 = System.currentTimeMillis()
+            Log.d(TAG, "Bitmap→BGR = ${t2 - t1}ms")
+
+            // ── 3. Letterbox：等比缩放 + 灰边填充 ──
+            val scale = minOf(targetWidth.toFloat() / srcW, targetHeight.toFloat() / srcH)
+            val newW = (srcW * scale).toInt().coerceAtLeast(1)
+            val newH = (srcH * scale).toInt().coerceAtLeast(1)
+            val padLeft = (targetWidth - newW) / 2
+            val padTop = (targetHeight - newH) / 2
+
+            // 等比缩放
             val resizedMat = cacheMat ?: Mat()
             cacheMat = resizedMat
-            Imgproc.resize(srcMat, resizedMat, Size(targetWidth.toDouble(), targetHeight.toDouble()))
+            Imgproc.resize(srcMat, resizedMat, Size(newW.toDouble(), newH.toDouble()))
             val t3 = System.currentTimeMillis()
-            Log.d(TAG, "Resize ${srcMat.width()}x${srcMat.height()}→${targetWidth}x${targetHeight} = ${t3-t2}ms")
+            Log.d(TAG, "Letterbox ${srcW}x${srcH}→${targetWidth}x${targetHeight} " +
+                    "scale=%.3f new=${newW}x${newH} pad=($padLeft,$padTop) = ${t3 - t2}ms".format(scale))
 
-            // Convert BGR to RGB
+            // BGR → RGB（YOLO 期望 RGB 输入）
             val rgbMat = Mat()
             Imgproc.cvtColor(resizedMat, rgbMat, Imgproc.COLOR_BGR2RGB)
 
-            // Optional horizontal flip for mirror effect (front camera)
-            // Core.flip(rgbMat, rgbMat, 1)
+            // 创建 640×640 填充图（灰边 114）
+            val paddedMat = Mat(targetHeight, targetWidth, CvType.CV_8UC3, Scalar.all(PAD_VALUE))
+            rgbMat.copyTo(paddedMat.submat(padTop, padTop + newH, padLeft, padLeft + newW))
+            rgbMat.release()
+            srcMat.release()
 
-            // Split BGR (CV_8UC3) into 3 channels (CV_8UC1), then convert to float
+            // ── 4. 分通道 → float32 → 归一化 ──
             val channels8U = ArrayList<Mat>(3).apply {
                 add(Mat())
                 add(Mat())
                 add(Mat())
             }
-            Core.split(rgbMat, channels8U)
+            Core.split(paddedMat, channels8U)
+            paddedMat.release()
 
             val floatArray = FloatArray(3 * targetHeight * targetWidth)
             var offset = 0
@@ -87,18 +126,22 @@ object ImagePreprocessor {
                 c8.release()
             }
 
-            // Normalize from [0, 255] to [0, 1]
+            // 归一化 [0, 255] → [0, 1]
             for (i in floatArray.indices) {
                 floatArray[i] /= 255.0f
             }
 
-            rgbMat.release()
-            srcMat.release()
-
             val totalMs = System.currentTimeMillis() - t0
             Log.d(TAG, "Preprocess total=${totalMs}ms")
 
-            return floatArray
+            return PreprocessResult(
+                tensor = floatArray,
+                padLeft = padLeft,
+                padTop = padTop,
+                scale = scale,
+                origWidth = srcW,
+                origHeight = srcH
+            )
         } catch (e: Exception) {
             Log.e(TAG, "[E01] preprocess failed: ${e.message}", e)
             throw e
@@ -108,8 +151,6 @@ object ImagePreprocessor {
     fun close() {
         cacheMat?.release()
         cacheMat = null
-        cacheBitmap?.recycle()
-        cacheBitmap = null
     }
 
     /**

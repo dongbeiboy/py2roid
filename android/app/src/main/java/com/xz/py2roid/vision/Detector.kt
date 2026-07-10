@@ -82,8 +82,12 @@ class Detector(
         engine = onnx
     }
 
+    /** NMS 前最多保留的候选框数，防止高阈值场景 O(n²) 爆炸 */
+    private var maxProposalsBeforeNms = 300
+
     @Synchronized
-    fun detect(inputTensor: FloatArray, inputWidth: Int, inputHeight: Int): List<DetectionResult> {
+    fun detect(result: PreprocessResult): List<DetectionResult> {
+        val inputTensor = result.tensor
         // NNAPI 垃圾输出自动回退到 CPU
         if (nnapiGarbageDetected && currentProvider == "NNAPI") {
             Log.w(TAG, "[Fallback] NNAPI garbage detected, reloading with CPU")
@@ -111,21 +115,8 @@ class Detector(
             // 诊断日志
             diagFrameCount++
             val isDiagFrame = diagFrameCount % DIAG_INTERVAL == 0
-            if (isDiagFrame) {
-                Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses output=$totalElements")
-                val sampleStr = (0 until 10.coerceAtMost(numProposals)).joinToString { i ->
-                    val cx = outputArray[i]
-                    val cy = outputArray[1 * numProposals + i]
-                    val w = outputArray[2 * numProposals + i]
-                    val h = outputArray[3 * numProposals + i]
-                    val p0 = outputArray[4 * numProposals + i]
-                    val p10 = outputArray[(4 + 10) * numProposals + i]
-                    "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},p10=${"%.4f".format(p10)})"
-                }
-                Log.d(TAG, "[Sample] first 10: $sampleStr")
-            }
 
-            // 置信度统计（用于 NNAPI 回退判断）
+            // 置信度采样（同时服务于 NNAPI 回退判断和诊断日志）
             val diagStep = (numProposals / 100).coerceAtLeast(1)
             var diagMaxConf = 0f
             var diagHighCount = 0
@@ -138,7 +129,19 @@ class Detector(
                 if (best > diagMaxConf) diagMaxConf = best
                 if (best > 0.1f) diagHighCount++
             }
+
             if (isDiagFrame) {
+                Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses output=$totalElements")
+                val sampleStr = (0 until 10.coerceAtMost(numProposals)).joinToString { i ->
+                    val cx = outputArray[i]
+                    val cy = outputArray[1 * numProposals + i]
+                    val w = outputArray[2 * numProposals + i]
+                    val h = outputArray[3 * numProposals + i]
+                    val p0 = outputArray[4 * numProposals + i]
+                    val p10 = outputArray[(4 + 10) * numProposals + i]
+                    "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},p10=${"%.4f".format(p10)})"
+                }
+                Log.d(TAG, "[Sample] first 10: $sampleStr")
                 Log.d(TAG, "[Dist] sampled=${numProposals / diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")
             }
 
@@ -150,8 +153,16 @@ class Detector(
                 return emptyList()
             }
 
-            // YOLOv8 解码
-            val detections = mutableListOf<DetectionResult>()
+            // ── Letterbox 坐标还原参数 ──
+            val padL = result.padLeft.toFloat()
+            val padT = result.padTop.toFloat()
+            val s = result.scale
+            val origW = result.origWidth.toFloat()
+            val origH = result.origHeight.toFloat()
+
+            // ── YOLOv8 解码 + letterbox 坐标还原 ──
+            // 第一遍：收集所有 > 阈值的 detection，收集时直接转换坐标
+            val rawDetections = mutableListOf<DetectionResult>()
             for (i in 0 until numProposals) {
                 val cx = outputArray[i]
                 val cy = outputArray[1 * numProposals + i]
@@ -169,22 +180,36 @@ class Detector(
                 }
                 if (maxProb < confidenceThreshold) continue
 
-                val x1 = ((cx - w / 2f) / inputWidth).coerceIn(0f, 1f)
-                val y1 = ((cy - h / 2f) / inputHeight).coerceIn(0f, 1f)
-                val x2 = ((cx + w / 2f) / inputWidth).coerceIn(0f, 1f)
-                val y2 = ((cy + h / 2f) / inputHeight).coerceIn(0f, 1f)
+                // 将 letterbox 空间坐标还原到原始图像空间
+                val cxOrig = (cx - padL) / s
+                val cyOrig = (cy - padT) / s
+                val wOrig = w / s
+                val hOrig = h / s
+
+                // 归一化到 [0, 1]（相对于原始图像尺寸）
+                val x1 = ((cxOrig - wOrig / 2f) / origW).coerceIn(0f, 1f)
+                val y1 = ((cyOrig - hOrig / 2f) / origH).coerceIn(0f, 1f)
+                val x2 = ((cxOrig + wOrig / 2f) / origW).coerceIn(0f, 1f)
+                val y2 = ((cyOrig + hOrig / 2f) / origH).coerceIn(0f, 1f)
 
                 val label = if (maxClassId in COCO_CLASSES.indices) COCO_CLASSES[maxClassId] else "class_$maxClassId"
-                detections.add(DetectionResult(label, maxClassId, maxProb, x1, y1, x2, y2))
+                rawDetections.add(DetectionResult(label, maxClassId, maxProb, x1, y1, x2, y2))
             }
 
-            val finalDetections = NmsHelper.nms(detections, iouThreshold)
+            // NMS 前按置信度取 top-K，减少 O(n²) 开销
+            val candidates = if (rawDetections.size > maxProposalsBeforeNms) {
+                rawDetections.sortedByDescending { it.confidence }.take(maxProposalsBeforeNms)
+            } else {
+                rawDetections
+            }
+
+            val finalDetections = NmsHelper.nms(candidates, iouThreshold)
             val elapsed = System.currentTimeMillis() - startTime
             val fps = if (elapsed > 0) 1000f / elapsed else 0f
 
             if (finalDetections.isNotEmpty()) {
                 val classes = finalDetections.groupBy { it.label }.mapValues { it.value.size }
-                Log.i(TAG, "[Result] final=${finalDetections.size} before_nms=${detections.size} classes=$classes")
+                Log.i(TAG, "[Result] final=${finalDetections.size} before_nms=${candidates.size} raw=${rawDetections.size} classes=$classes")
             }
 
             onDetectionResult(finalDetections)
