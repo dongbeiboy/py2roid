@@ -29,8 +29,9 @@ object Logger {
     }
     fun e(msg: String, tr: Throwable? = null) {
         if (enabled) {
-            Log.e(TAG, msg, tr)
-            _logFlow.tryEmit("[E] $msg")
+            val enriched = if (tr != null) "$msg (${tr::class.simpleName})" else msg
+            Log.e(TAG, enriched, tr)
+            _logFlow.tryEmit("[E] $enriched")
         }
     }
 }

@@ -62,6 +62,10 @@ class Detector(
         currentBackend = backend
         nnapiGarbageDetected = false
 
+        // 打印模型文件信息便于调试
+        val modelFile = java.io.File(modelPath)
+        Log.i(TAG, "[Load] backend=$backend model=${modelFile.name} size=${if (modelFile.exists()) modelFile.length() else -1}B exists=${modelFile.exists()}")
+
         // VCAP 走独立引擎
         if (backend == InferenceBackend.VCAP) {
             try {
@@ -76,7 +80,10 @@ class Detector(
         }
 
         // TFLite 走独立引擎（含 TFLite CPU / GPU / NNAPI）
-        if (backend == InferenceBackend.TFLITE || backend == InferenceBackend.TFLITE_GPU || backend == InferenceBackend.TFLITE_NNAPI) {
+        // Auto 时若模型是 .tflite 也路由到 TFLite 引擎
+        val isTfliteModel = modelPath.endsWith(".tflite", ignoreCase = true)
+        if (backend == InferenceBackend.TFLITE || backend == InferenceBackend.TFLITE_GPU || backend == InferenceBackend.TFLITE_NNAPI ||
+            (backend == InferenceBackend.Auto && isTfliteModel)) {
             val tflite = TfliteEngine(context)
             tflite.loadModel(modelPath, backend)
             engine = tflite
@@ -226,7 +233,15 @@ class Detector(
             onPerformanceUpdate(fps, currentProvider, elapsed)
             return finalDetections
         } catch (e: Exception) {
-            Log.e(TAG, "[D05] Detection failed: ${e.message}", e)
+            val eng = engine
+            Log.e(TAG, "[D05] ${e::class.simpleName}: ${e.message} provider=$currentProvider engine=${eng?.name ?: "null"} input=${eng?.inputWidth}x${eng?.inputHeight}")
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                val sw = java.io.StringWriter()
+                val pw = java.io.PrintWriter(sw)
+                e.printStackTrace(pw)
+                val trace = sw.toString().split("\n").take(4).joinToString(" | ")
+                Log.d(TAG, "[D05] stack(top4): $trace")
+            }
             onPerformanceUpdate(0f, currentProvider, System.currentTimeMillis() - startTime)
             throw e
         }

@@ -42,17 +42,21 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                 ortEnv!!.createSession(modelPath, opts)
             } catch (e: Exception) {
                 if (resolvedBackend != InferenceBackend.CPU) {
-                    Log.w(TAG, "Session creation failed with $resolvedBackend, retrying CPU", e)
+                    Log.w(TAG, "[CreateSession] ${e::class.simpleName}: ${e.message} backend=$resolvedBackend -> fallback CPU")
                     _provider = "CPU"
                     ortEnv!!.createSession(modelPath, OrtSession.SessionOptions().apply {
                         setIntraOpNumThreads(4)
                     })
-                } else throw e
+                } else {
+                    Log.e(TAG, "[CreateSession] ${e::class.simpleName}: ${e.message} backend=CPU (no fallback)")
+                    throw e
+                }
             }
             readModelMetadata()
             Log.i(TAG, "Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight}")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load model: $modelPath", e)
+            val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
+            Log.e(TAG, "[LoadModel] ${e::class.simpleName}: ${e.message} backend=$_provider fileSize=${fileSize}B model=$modelPath")
             throw e
         }
     }
@@ -99,7 +103,7 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                         _provider = "XNNPACK"
                     } catch (e: Exception) {
                         _provider = "CPU"
-                        Log.w(TAG, "XNNPACK unavailable, fallback CPU")
+                        Log.w(TAG, "[XNNPACK] ${e::class.simpleName}: ${e.message} -> fallback CPU")
                     }
                 }
                 InferenceBackend.NNAPI -> {
@@ -113,7 +117,7 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                     } catch (e: Exception) {
                         setIntraOpNumThreads(4)
                         _provider = "CPU"
-                        Log.w(TAG, "NNAPI unavailable in Auto/VCAP mode, fallback CPU")
+                        Log.w(TAG, "[NNAPI/Auto] ${e::class.simpleName}: ${e.message} -> fallback CPU")
                     }
                 }
                 InferenceBackend.TFLITE, InferenceBackend.TFLITE_GPU, InferenceBackend.TFLITE_NNAPI -> {

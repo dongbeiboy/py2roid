@@ -15,11 +15,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.content.pm.ApplicationInfo
 import com.xz.py2roid.bridge.PythonBridge
 import com.xz.py2roid.service.DetectionForegroundService
 import com.xz.py2roid.ui.AppScreen
 import com.xz.py2roid.ui.BoundingBox
 import com.xz.py2roid.ui.HudInfo
+import com.xz.py2roid.ui.InferenceBackend
 import com.xz.py2roid.ui.MainScreen
 import com.xz.py2roid.ui.MainViewModel
 import com.xz.py2roid.ui.Py2roidTheme
@@ -46,6 +48,9 @@ class MainActivity : ComponentActivity() {
     private var isRunning = false
     private var latestTargetCount = 0
     private var lastNotificationTime = 0L
+    // [DEBUG] ADB intent extra 覆写（仅 debug 包有效）
+    private var adbModelOverride: String? = null
+    private var adbBackendOverride: InferenceBackend? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +60,26 @@ class MainActivity : ComponentActivity() {
         modelManager = ModelManager(this)
         settingsStore = SettingsStore(this)
         permissionHelper = PermissionHelper(this)
+
+        // [DEBUG] ADB intent extra 覆写（仅 debug 包有效，存字段不走 prefs 避免 LaunchedEffect 覆盖）
+        // adb shell am start -n com.xz.py2roid/.MainActivity \
+        //   --es model yolov8n.tflite --es backend TFLITE
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            intent?.extras?.let { extras ->
+                extras.getString("model")?.let {
+                    adbModelOverride = it
+                    Logger.i("[ADB] model override: $it")
+                }
+                extras.getString("backend")?.let {
+                    try {
+                        adbBackendOverride = InferenceBackend.valueOf(it)
+                        Logger.i("[ADB] backend override: $it")
+                    } catch (_: IllegalArgumentException) {
+                        Logger.w("[ADB] unknown backend: $it")
+                    }
+                }
+            }
+        }
 
         // 解压内置模型
         lifecycleScope.launch(Dispatchers.IO) {
@@ -95,20 +120,45 @@ class MainActivity : ComponentActivity() {
 
             // 实时同步设置 → Detector（阈值滑块即时生效）
             val currentSettings by viewModel.settings.collectAsState()
+            val selectedModelName by viewModel.selectedModel.collectAsState()
             val prevBackend = remember { mutableStateOf(currentSettings.inferenceBackend) }
+            val prevModel = remember { mutableStateOf(selectedModelName) }
+
+            // 持久化设置 + 后端变更 → 重载模型
             LaunchedEffect(currentSettings) {
+                settingsStore.save(currentSettings)
                 detector?.let { d ->
                     d.confidenceThreshold = currentSettings.confidenceThreshold
                     d.iouThreshold = currentSettings.iouThreshold
-                    // 推理后端切换 → 重新加载模型
                     if (currentSettings.inferenceBackend != prevBackend.value) {
                         prevBackend.value = currentSettings.inferenceBackend
-                        val modelName = settingsStore.getSelectedModel()
                         val models = modelManager.scanModels()
                         viewModel.updateModels(models.map { com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize) })
-                        val modelPath = models.find { it.name == modelName }?.path
+                        val modelPath = models.find { it.name == selectedModelName }?.path
                         if (modelPath != null) {
-                            Logger.i("Reloading model with backend=${currentSettings.inferenceBackend}")
+                            Logger.i("Reloading model: $selectedModelName backend=${currentSettings.inferenceBackend}")
+                            launch(Dispatchers.IO) {
+                                try {
+                                    d.loadModel(modelPath, currentSettings.inferenceBackend)
+                                } catch (e: Exception) {
+                                    Logger.e("Failed to reload model", e)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 持久化模型选择 + 模型变更 → 重载模型
+            LaunchedEffect(selectedModelName) {
+                settingsStore.setSelectedModel(selectedModelName)
+                detector?.let { d ->
+                    if (selectedModelName != prevModel.value) {
+                        prevModel.value = selectedModelName
+                        val models = modelManager.scanModels()
+                        val modelPath = models.find { it.name == selectedModelName }?.path
+                        if (modelPath != null) {
+                            Logger.i("Reloading model: $selectedModelName backend=${currentSettings.inferenceBackend}")
                             launch(Dispatchers.IO) {
                                 try {
                                     d.loadModel(modelPath, currentSettings.inferenceBackend)
@@ -175,9 +225,13 @@ class MainActivity : ComponentActivity() {
         )
         detector = det
 
-        // 加载模型
+        // 加载模型（ADB override 优先于 settingsStore）
         try {
-            val modelName = settingsStore.getSelectedModel()
+            val modelName = adbModelOverride ?: settingsStore.getSelectedModel()
+            val backend = adbBackendOverride ?: settings.inferenceBackend
+            // 同步 ADB override 到 ViewModel，避免 LaunchedEffect 写回旧值
+            if (adbModelOverride != null) viewModel.selectModel(modelName)
+            if (adbBackendOverride != null) viewModel.updateBackend(backend)
             val models = modelManager.scanModels()
             viewModel.updateModels(models.map { com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize) })
             val modelPath = models.find { it.name == modelName }?.path
@@ -185,15 +239,19 @@ class MainActivity : ComponentActivity() {
                 det.confidenceThreshold = settings.confidenceThreshold
                 det.iouThreshold = settings.iouThreshold
                 Logger.i("[Device] ${Build.MANUFACTURER} ${Build.MODEL} SDK=${Build.VERSION.SDK_INT}, " +
-                        "backend=${settings.inferenceBackend}, conf=${settings.confidenceThreshold}")
-                det.loadModel(modelPath, settings.inferenceBackend)
+                        "backend=$backend, conf=${settings.confidenceThreshold}" +
+                        if (adbModelOverride != null) " (adb: model=$modelName backend=$backend)" else "")
+                det.loadModel(modelPath, backend)
                 Logger.i("Model loaded: $modelName")
             } else {
                 Logger.w("Model not found: $modelName")
                 return
             }
         } catch (e: Exception) {
-            Logger.e("Failed to load model", e)
+            val modelName = settingsStore.getSelectedModel()
+            val file = java.io.File(modelManager.scanModels().find { it.name == modelName }?.path ?: "?")
+            val fileInfo = if (file.exists()) "${file.length()}B" else "not_found"
+            Logger.e("[LoadModel] ${e::class.simpleName}: ${e.message} model=$modelName backend=${settings.inferenceBackend} fileSize=$fileInfo")
             return
         }
 
@@ -220,7 +278,14 @@ class MainActivity : ComponentActivity() {
                             Logger.d("[Perf] ${imgW}x${imgH} pre=${preMs}ms inf=${totalMs-preMs}ms total=${totalMs}ms det=0")
                         }
                     } catch (e: Exception) {
-                        Logger.e("[M01] Frame error: ${e.message}")
+                        Logger.e("[M01] Frame error: ${e::class.simpleName}: ${e.message} provider=${det.currentProvider}")
+                        if (Logger.enabled) {
+                            val sw = java.io.StringWriter()
+                            val pw = java.io.PrintWriter(sw)
+                            e.printStackTrace(pw)
+                            val trace = sw.toString().split("\n").take(6).joinToString(" | ")
+                            android.util.Log.w("py2roid", "[M01] stack(top6): $trace")
+                        }
                     } finally {
                         imageProxy.close()
                     }

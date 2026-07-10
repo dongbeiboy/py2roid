@@ -82,6 +82,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             readShapes()
             Log.i(TAG, "Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight} output=$outputSize")
         } catch (e: Exception) {
+            val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
             // GPU delegate 失败时回退 CPU
             if (backend == InferenceBackend.TFLITE_GPU && gpuDelegate != null) {
                 Log.w(TAG, "GPU delegate failed, fallback CPU", e)
@@ -89,7 +90,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
                 loadModel(modelPath, InferenceBackend.TFLITE)
                 return
             }
-            Log.e(TAG, "Failed to load model: $modelPath", e)
+            Log.e(TAG, "[LoadModel] ${e::class.simpleName}: ${e.message} backend=$backend fileSize=${fileSize}B model=$modelPath")
             throw e
         }
     }

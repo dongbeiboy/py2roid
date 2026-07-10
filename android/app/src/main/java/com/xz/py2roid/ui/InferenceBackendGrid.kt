@@ -3,10 +3,10 @@ package com.xz.py2roid.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -120,8 +120,8 @@ private fun BackendCell(
                 Text(label, fontSize = 12.sp, color = textColor)
                 AnimatedVisibility(
                     visible = selected,
-                    enter = fadeIn(tween(200)) + scaleIn(tween(200)),
-                    exit = fadeOut(tween(200)) + scaleOut(tween(200))
+                    enter = expandHorizontally(tween(200)) + fadeIn(tween(200)),
+                    exit = shrinkHorizontally(tween(200)) + fadeOut(tween(200))
                 ) {
                     Row {
                         Spacer(Modifier.width(4.dp))

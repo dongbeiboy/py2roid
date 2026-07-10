@@ -95,7 +95,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
                     _inputWidth = inputShape[3]
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Could not read input shape, using defaults", e)
+                Log.w(TAG, "[Shape] input: ${e::class.simpleName}: ${e.message} (defaults ${_inputWidth}x${_inputHeight})")
             }
 
             try {
@@ -104,7 +104,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
                     _outputSize = outputShape.fold(1) { acc, v -> acc * v }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Could not read output shape", e)
+                Log.w(TAG, "[Shape] output: ${e::class.simpleName}: ${e.message}")
             }
 
             _provider = when (runtimeId) {
@@ -115,7 +115,8 @@ class VcapEngine(private val context: Context) : InferenceEngine {
 
             Log.i(TAG, "Model loaded: $modelPath runtime=$_provider input=${_inputWidth}x${_inputHeight} outputSize=$_outputSize")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load model: $modelPath", e)
+            val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
+            Log.e(TAG, "[LoadModel] ${e::class.simpleName}: ${e.message} fileSize=${fileSize}B runtime=$runtimeId model=$modelPath")
             throw e
         }
     }
@@ -137,7 +138,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
         try {
             vcapNet?.release()
         } catch (e: Exception) {
-            Log.w(TAG, "Error releasing VCAP", e)
+            Log.w(TAG, "[Release] ${e::class.simpleName}: ${e.message}")
         }
         vcapNet = null
     }
