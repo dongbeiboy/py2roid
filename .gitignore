@@ -5,8 +5,10 @@
 
 # ---- Android / Gradle ----
 android/.gradle/
+android/.kotlin/
 android/build/
 android/app/build/
+android/app/bin/
 android/local.properties
 android/*.iml
 android/.idea/
@@ -16,7 +18,11 @@ android/.idea/
 *.dex
 *.class
 *.log
+*.hprof
+*.crash
 gen/
+captures/
+out/
 
 # ---- Gradle Wrapper (保留 wrapper jar + properties，忽略本地分发包) ----
 # gradle-wrapper.properties 必须提交，它锁定 Gradle 版本供全组使用
@@ -55,3 +61,4 @@ plan.md
 # ---- 环境 / 凭据 ----
 .env
 *.local
+pair_adb.bat

@@ -25,6 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Download YOLO model
+        run: |
+          mkdir -p android/app/src/main/assets/models
+          curl -fSL \
+            "https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.onnx" \
+            -o android/app/src/main/assets/models/yolov8n.onnx
+          ls -lh android/app/src/main/assets/models/
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
