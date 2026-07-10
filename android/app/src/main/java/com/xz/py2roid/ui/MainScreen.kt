@@ -105,6 +105,16 @@ fun MainScreen(
             }
 
             AppScreen.Settings -> {
+                // 竖屏显示状态栏（便于阅读设置项），横屏全屏沉浸
+                DisposableEffect(isLandscape) {
+                    val w = (view.context as? android.app.Activity)?.window
+                    if (isLandscape) {
+                        hideSystemBars(w)
+                    } else {
+                        showSystemBars(w)
+                    }
+                    onDispose { hideSystemBars(w) }
+                }
                 SettingsScreen(
                     settings = settings,
                     enabledBackends = viewModel.enabledBackends,
