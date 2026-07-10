@@ -3,7 +3,7 @@
 # Android Gradle 项目 + Python 工具 + 开发环境杂项
 # ============================================================
 
-# ---- Android / Gradle ----
+# ---- Android / Gradle 构建产物 ----
 android/.gradle/
 android/.kotlin/
 android/build/
@@ -17,14 +17,16 @@ android/.idea/
 *.ap_
 *.dex
 *.class
-*.log
-*.hprof
-*.crash
 gen/
 captures/
 out/
 
-# ---- Gradle Wrapper (保留 wrapper jar + properties，忽略本地分发包) ----
+# ---- 调试 / 崩溃日志 ----
+*.log
+*.hprof
+*.crash
+
+# ---- Gradle Wrapper（保留 wrapper jar + properties，忽略本地分发包） ----
 # gradle-wrapper.properties 必须提交，它锁定 Gradle 版本供全组使用
 # 分发包在 ~/.gradle/wrapper/dists/ 中由 gradlew 自动管理
 android/gradle-*.zip
@@ -43,30 +45,33 @@ build/
 .venv/
 venv/
 
-# ---- Eval 数据（图片集、评测输出） ----
-tools/eval/coco_images/
-tools/eval/output/
-
-# ---- UI 布局预览（本地 Squircle IDE 导出，非源码） ----
-ui.xml
-
 # ---- 模型转换中间产物 ----
 *.npy
 android/app/src/main/assets/models/*_tflite/
 
-# ---- ONNX / TFLite 模型（assets/models/ 下的模型文件直接入库） ----
+# ---- ONNX / TFLite 模型（assets/models/ 下已入库的除外） ----
 *.onnx
 *.tflite
 *.pb
 !android/app/src/main/assets/models/*.onnx
 !android/app/src/main/assets/models/*.tflite
 
-# ---- IDE ----
+# ---- Eval 数据（图片集、评测输出） ----
+tools/eval/coco_images/
+tools/eval/output/
+tools/eval/coco_val2017.zip
+
+# ---- UI 布局预览（本地 Squircle IDE 导出，非源码） ----
+ui.xml
+
+# ---- IDE / 编辑器 ----
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# ---- 操作系统杂项 ----
 .DS_Store
 Thumbs.db
 
@@ -78,8 +83,8 @@ plan.md
 *.local
 pair_adb.bat
 
+# ---- 截屏 / 录屏 ----
+screen.png
+
 # ---- vivo 开放平台工具 ----
 .vivo/
-
-tools/eval/coco_val2017.zip
-screen.png
