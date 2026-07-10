@@ -1,5 +1,6 @@
 package com.xz.py2roid.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,8 +13,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +55,7 @@ enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNN
 fun SettingsScreen(
     settings: AppSettings,
     enabledBackends: Set<InferenceBackend> = InferenceBackend.entries.toSet(),
+    currentProvider: String = "?",
     onConfidenceChange: (Float) -> Unit,
     onIouChange: (Float) -> Unit,
     onCommModeChange: (CommMode) -> Unit,
@@ -114,71 +116,11 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
             SectionHeader("推理后端")
             SettingsCard {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // 第一行：Auto / CPU / XNNPACK
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        val row1 = InferenceBackend.entries.take(3)
-                        row1.forEachIndexed { i, b ->
-                            val enabled = b in enabledBackends
-                            SegmentedButton(
-                                selected = settings.inferenceBackend == b,
-                                onClick = { if (enabled) onBackendChange(b) },
-                                enabled = enabled,
-                                shape = SegmentedButtonDefaults.itemShape(i, row1.size),
-                                colors = SegmentedButtonDefaults.colors(
-                                    activeContainerColor = MaterialTheme.colorScheme.primary,
-                                    inactiveContainerColor = Color(0xFF2A2A2A),
-                                    disabledActiveContainerColor = Color(0xFF2A2A2A),
-                                    disabledInactiveContainerColor = Color(0xFF1A1A1A),
-                                    disabledActiveContentColor = Color.Gray,
-                                    disabledInactiveContentColor = Color.Gray
-                                )
-                            ) { Text(b.label, fontSize = 12.sp) }
-                        }
-                    }
-                    // 第二行：NNAPI / VCAP
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        val row2 = InferenceBackend.entries.slice(3..4)
-                        row2.forEachIndexed { i, b ->
-                            val enabled = b in enabledBackends
-                            SegmentedButton(
-                                selected = settings.inferenceBackend == b,
-                                onClick = { if (enabled) onBackendChange(b) },
-                                enabled = enabled,
-                                shape = SegmentedButtonDefaults.itemShape(i, row2.size),
-                                colors = SegmentedButtonDefaults.colors(
-                                    activeContainerColor = MaterialTheme.colorScheme.primary,
-                                    inactiveContainerColor = Color(0xFF2A2A2A),
-                                    disabledActiveContainerColor = Color(0xFF2A2A2A),
-                                    disabledInactiveContainerColor = Color(0xFF1A1A1A),
-                                    disabledActiveContentColor = Color.Gray,
-                                    disabledInactiveContentColor = Color.Gray
-                                )
-                            ) { Text(b.label, fontSize = 12.sp) }
-                        }
-                    }
-                    // 第三行：TFLite / TFLite GPU / TFLite NNAPI
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        val row3 = InferenceBackend.entries.drop(5)
-                        row3.forEachIndexed { i, b ->
-                            val enabled = b in enabledBackends
-                            SegmentedButton(
-                                selected = settings.inferenceBackend == b,
-                                onClick = { if (enabled) onBackendChange(b) },
-                                enabled = enabled,
-                                shape = SegmentedButtonDefaults.itemShape(i, row3.size),
-                                colors = SegmentedButtonDefaults.colors(
-                                    activeContainerColor = MaterialTheme.colorScheme.primary,
-                                    inactiveContainerColor = Color(0xFF2A2A2A),
-                                    disabledActiveContainerColor = Color(0xFF2A2A2A),
-                                    disabledInactiveContainerColor = Color(0xFF1A1A1A),
-                                    disabledActiveContentColor = Color.Gray,
-                                    disabledInactiveContentColor = Color.Gray
-                                )
-                            ) { Text(b.label, fontSize = 12.sp) }
-                        }
-                    }
-                }
+                InferenceBackendGrid(
+                    selectedBackend = settings.inferenceBackend,
+                    enabledBackends = enabledBackends,
+                    onBackendChange = onBackendChange
+                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -213,7 +155,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     AboutRow("应用", "py2roid")
                     AboutRow("版本", versionName)
-                    AboutRow("视觉引擎", "ONNX Runtime + ${settings.inferenceBackend.label}")
+                    AboutRow("视觉引擎", currentProvider)
                     AboutRow("Python", "3.12 (Chaquopy)")
                 }
             }
@@ -221,14 +163,16 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
 
             // → 预配置
-            Button(
-                onClick = onGoConfig,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A2A), contentColor = Color(0xFF4CAF50)),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text("→ 预配置", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
+            Text(
+                text = "→ 预配置",
+                color = Color(0xFF4CAF50),
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onGoConfig() }
+                    .padding(vertical = 12.dp),
+                textAlign = TextAlign.Center
+            )
 
             Spacer(Modifier.height(32.dp))
         }

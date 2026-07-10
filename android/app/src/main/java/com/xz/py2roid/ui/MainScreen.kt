@@ -106,6 +106,7 @@ fun MainScreen(
                 SettingsScreen(
                     settings = settings,
                     enabledBackends = viewModel.enabledBackends,
+                    currentProvider = hudInfo.provider,
                     onConfidenceChange = viewModel::updateConfidence,
                     onIouChange = viewModel::updateIou,
                     onCommModeChange = viewModel::updateCommMode,

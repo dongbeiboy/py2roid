@@ -89,69 +89,11 @@ fun ConfigScreen(
             // 推理后端
             Text("推理后端", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
 
-            // Row 1: Auto / CPU / XNNPACK
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val row1 = InferenceBackend.entries.take(3)
-                row1.forEachIndexed { i, b ->
-                    val enabled = b in enabledBackends
-                    SegmentedButton(
-                        selected = settings.inferenceBackend == b,
-                        onClick = { if (enabled) onBackendChange(b) },
-                        enabled = enabled,
-                        shape = SegmentedButtonDefaults.itemShape(i, row1.size),
-                        colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = MaterialTheme.colorScheme.primary,
-                            inactiveContainerColor = Color(0xFF2A2A2A),
-                            disabledActiveContainerColor = Color(0xFF2A2A2A),
-                            disabledInactiveContainerColor = Color(0xFF1A1A1A),
-                            disabledActiveContentColor = Color.Gray,
-                            disabledInactiveContentColor = Color.Gray
-                        )
-                    ) { Text(b.label, fontSize = 12.sp) }
-                }
-            }
-            // Row 2: NNAPI / VCAP
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val row2 = InferenceBackend.entries.slice(3..4)
-                row2.forEachIndexed { i, b ->
-                    val enabled = b in enabledBackends
-                    SegmentedButton(
-                        selected = settings.inferenceBackend == b,
-                        onClick = { if (enabled) onBackendChange(b) },
-                        enabled = enabled,
-                        shape = SegmentedButtonDefaults.itemShape(i, row2.size),
-                        colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = MaterialTheme.colorScheme.primary,
-                            inactiveContainerColor = Color(0xFF2A2A2A),
-                            disabledActiveContainerColor = Color(0xFF2A2A2A),
-                            disabledInactiveContainerColor = Color(0xFF1A1A1A),
-                            disabledActiveContentColor = Color.Gray,
-                            disabledInactiveContentColor = Color.Gray
-                        )
-                    ) { Text(b.label, fontSize = 12.sp) }
-                }
-            }
-            // Row 3: TFLite / TFLite GPU / TFLite NNAPI
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val row3 = InferenceBackend.entries.drop(5)
-                row3.forEachIndexed { i, b ->
-                    val enabled = b in enabledBackends
-                    SegmentedButton(
-                        selected = settings.inferenceBackend == b,
-                        onClick = { if (enabled) onBackendChange(b) },
-                        enabled = enabled,
-                        shape = SegmentedButtonDefaults.itemShape(i, row3.size),
-                        colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = MaterialTheme.colorScheme.primary,
-                            inactiveContainerColor = Color(0xFF2A2A2A),
-                            disabledActiveContainerColor = Color(0xFF2A2A2A),
-                            disabledInactiveContainerColor = Color(0xFF1A1A1A),
-                            disabledActiveContentColor = Color.Gray,
-                            disabledInactiveContentColor = Color.Gray
-                        )
-                    ) { Text(b.label, fontSize = 12.sp) }
-                }
-            }
+            InferenceBackendGrid(
+                selectedBackend = settings.inferenceBackend,
+                enabledBackends = enabledBackends,
+                onBackendChange = onBackendChange
+            )
 
             Spacer(Modifier.height(16.dp))
 
