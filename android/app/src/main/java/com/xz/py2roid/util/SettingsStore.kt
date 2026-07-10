@@ -15,7 +15,8 @@ class SettingsStore(context: Context) {
             iouThreshold = prefs.getFloat("iou", 0.45f),
             commMode = CommMode.valueOf(prefs.getString("commMode", CommMode.USB.name) ?: CommMode.USB.name),
             inferenceBackend = InferenceBackend.valueOf(prefs.getString("backend", InferenceBackend.Auto.name) ?: InferenceBackend.Auto.name),
-            debugOverlayEnabled = prefs.getBoolean("debugOverlay", false)
+            debugOverlayEnabled = prefs.getBoolean("debugOverlay", false),
+            startOnConfig = prefs.getBoolean("startOnConfig", true)
         )
     }
 
@@ -26,6 +27,7 @@ class SettingsStore(context: Context) {
             putString("commMode", settings.commMode.name)
             putString("backend", settings.inferenceBackend.name)
             putBoolean("debugOverlay", settings.debugOverlayEnabled)
+            putBoolean("startOnConfig", settings.startOnConfig)
             apply()
         }
     }

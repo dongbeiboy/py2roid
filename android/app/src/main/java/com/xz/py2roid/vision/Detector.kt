@@ -75,6 +75,15 @@ class Detector(
             }
         }
 
+        // TFLite 走独立引擎（含 TFLite CPU / GPU / NNAPI）
+        if (backend == InferenceBackend.TFLITE || backend == InferenceBackend.TFLITE_GPU || backend == InferenceBackend.TFLITE_NNAPI) {
+            val tflite = TfliteEngine(context)
+            tflite.loadModel(modelPath, backend)
+            engine = tflite
+            Log.i(TAG, "TFLite engine loaded: $modelPath provider=${tflite.provider}")
+            return
+        }
+
         // ONNX Runtime 路径（含 Auto/CPU/XNNPACK/NNAPI）
         val onnx = OnnxEngine(context)
         val onnxBackend = if (backend == InferenceBackend.VCAP) InferenceBackend.Auto else backend

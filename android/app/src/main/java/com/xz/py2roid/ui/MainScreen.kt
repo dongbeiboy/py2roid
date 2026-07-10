@@ -1,5 +1,8 @@
 package com.xz.py2roid.ui
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -13,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,10 +26,15 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.xz.py2roid.vision.ModelManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MainScreen(
-    viewModel: MainViewModel = viewModel()
+    viewModel: MainViewModel = viewModel(),
+    modelManager: ModelManager? = null
 ) {
     val screen by viewModel.screen.collectAsState()
     val hudInfo by viewModel.hudInfo.collectAsState()
@@ -58,6 +67,13 @@ fun MainScreen(
     ) {
         val isLandscape = maxWidth > maxHeight
 
+        // 启动时按设置决定进入配置页还是直接检测
+        LaunchedEffect(Unit) {
+            if (settings.startOnConfig) {
+                viewModel.navigateToConfig()
+            }
+        }
+
         // 相机层始终在 composition 中，切设置页时保持 Surface
         CameraPreview(
             previewView = previewView,
@@ -66,6 +82,20 @@ fun MainScreen(
         )
 
         when (screen) {
+            AppScreen.Config -> {
+                ConfigScreen(
+                    models = models,
+                    selectedModel = selectedModel,
+                    settings = settings,
+                    enabledBackends = viewModel.enabledBackends,
+                    onModelSelected = viewModel::selectModel,
+                    onBackendChange = viewModel::updateBackend,
+                    onStartOnConfigChange = viewModel::updateStartOnConfig,
+                    onStart = viewModel::navigateToMain,
+                    onOpenSettings = viewModel::navigateToSettings
+                )
+            }
+
             AppScreen.Settings -> {
                 SettingsScreen(
                     settings = settings,
@@ -140,16 +170,50 @@ fun MainScreen(
         }
     }
 
+    // 模型导入文件选择器
+    val scope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null || modelManager == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val mgr = modelManager ?: return@launch
+            val fileName = getFileName(context, uri)
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    mgr.importModel(stream, fileName)
+                }
+                val scanned = mgr.scanModels().map {
+                    ModelItem(name = it.name, inputSize = it.inputSize)
+                }
+                withContext(Dispatchers.Main) {
+                    viewModel.updateModels(scanned)
+                }
+            }
+        }
+    }
+
     // 模型选择 BottomSheet（独立于 when，始终可触发）
     if (showModelPicker) {
         ModelPicker(
             models = models,
             selectedModel = selectedModel,
             onModelSelected = viewModel::selectModel,
-            onImportClick = { },
+            onImportClick = { importLauncher.launch(arrayOf("*/*")) },
             onDismiss = viewModel::hideModelPicker
         )
     }
+}
+
+private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
+    var name = "model.onnx"
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (nameIndex >= 0 && cursor.moveToFirst()) {
+            name = cursor.getString(nameIndex)
+        }
+    }
+    return name
 }
 
 private fun hideSystemBars(window: android.view.Window?) {

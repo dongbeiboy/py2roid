@@ -4,6 +4,7 @@ import androidx.camera.view.PreviewView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xz.py2roid.util.Logger
+import com.xz.py2roid.vision.TfliteEngine
 import com.xz.py2roid.vision.VcapEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +22,7 @@ data class HudInfo(
     val gpuLoad: Int = 0
 )
 
-enum class AppScreen { Main, Settings }
+enum class AppScreen { Main, Settings, Config }
 
 class MainViewModel : ViewModel() {
 
@@ -68,13 +69,15 @@ class MainViewModel : ViewModel() {
     val isDetecting: StateFlow<Boolean> = _isDetecting.asStateFlow()
 
     // Navigation
-    fun navigateToSettings() { _screen.value = AppScreen.Settings }
+    fun navigateToConfig() { _screen.value = AppScreen.Config }
     fun navigateToMain() { _screen.value = AppScreen.Main }
+    fun navigateToSettings() { _screen.value = AppScreen.Settings }
 
     // Model picker
     fun showModelPicker() { _showModelPicker.value = true }
     fun hideModelPicker() { _showModelPicker.value = false }
     fun selectModel(name: String) { _selectedModel.value = name }
+    fun updateModels(items: List<ModelItem>) { _models.value = items }
 
     // Settings
     fun updateConfidence(value: Float) {
@@ -89,6 +92,9 @@ class MainViewModel : ViewModel() {
     fun updateBackend(backend: InferenceBackend) {
         _settings.value = _settings.value.copy(inferenceBackend = backend)
     }
+    fun updateStartOnConfig(value: Boolean) {
+        _settings.value = _settings.value.copy(startOnConfig = value)
+    }
 
     // 可用后端集合（启动时检测一次）
     val enabledBackends: Set<InferenceBackend> = buildSet {
@@ -97,6 +103,9 @@ class MainViewModel : ViewModel() {
         add(InferenceBackend.XNNPACK)
         add(InferenceBackend.NNAPI)
         if (VcapEngine.isSdkAvailable()) add(InferenceBackend.VCAP)
+        add(InferenceBackend.TFLITE)
+        if (TfliteEngine.isGpuAvailable()) add(InferenceBackend.TFLITE_GPU)
+        add(InferenceBackend.TFLITE_NNAPI)
     }
 
     fun updateDebugOverlay(enabled: Boolean) {

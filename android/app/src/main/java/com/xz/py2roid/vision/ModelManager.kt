@@ -71,7 +71,7 @@ class ModelManager(private val context: Context) {
         }
 
         return dir.listFiles()
-            ?.filter { it.isFile && (it.name.endsWith(".onnx") || it.name.endsWith(".vaim")) }
+            ?.filter { it.isFile && (it.name.endsWith(".onnx") || it.name.endsWith(".vaim") || it.name.endsWith(".tflite")) }
             ?.map { file ->
                 ModelInfo(
                     name = file.name,

@@ -116,6 +116,10 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                         Log.w(TAG, "NNAPI unavailable in Auto/VCAP mode, fallback CPU")
                     }
                 }
+                InferenceBackend.TFLITE, InferenceBackend.TFLITE_GPU, InferenceBackend.TFLITE_NNAPI -> {
+                    setIntraOpNumThreads(4)
+                    _provider = "CPU"
+                }
             }
         }
     }

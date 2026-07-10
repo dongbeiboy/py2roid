@@ -80,8 +80,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // 系统返回键/手势：设置页 → 主界面，主界面才退出
-            BackHandler(screen == AppScreen.Settings) {
+            // 系统返回键/手势：设置页/配置页 → 主界面，主界面才退出
+            BackHandler(screen == AppScreen.Settings || screen == AppScreen.Config) {
                 viewModel.navigateToMain()
             }
 
@@ -105,6 +105,7 @@ class MainActivity : ComponentActivity() {
                         prevBackend.value = currentSettings.inferenceBackend
                         val modelName = settingsStore.getSelectedModel()
                         val models = modelManager.scanModels()
+                        viewModel.updateModels(models.map { com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize) })
                         val modelPath = models.find { it.name == modelName }?.path
                         if (modelPath != null) {
                             Logger.i("Reloading model with backend=${currentSettings.inferenceBackend}")
@@ -121,7 +122,7 @@ class MainActivity : ComponentActivity() {
             }
 
             Py2roidTheme {
-                MainScreen(viewModel = viewModel)
+                MainScreen(viewModel = viewModel, modelManager = modelManager)
             }
         }
 
@@ -178,6 +179,7 @@ class MainActivity : ComponentActivity() {
         try {
             val modelName = settingsStore.getSelectedModel()
             val models = modelManager.scanModels()
+            viewModel.updateModels(models.map { com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize) })
             val modelPath = models.find { it.name == modelName }?.path
             if (modelPath != null) {
                 det.confidenceThreshold = settings.confidenceThreshold

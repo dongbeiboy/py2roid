@@ -40,11 +40,12 @@ data class AppSettings(
     val iouThreshold: Float = 0.45f,
     val commMode: CommMode = CommMode.USB,
     val inferenceBackend: InferenceBackend = InferenceBackend.Auto,
-    val debugOverlayEnabled: Boolean = false
+    val debugOverlayEnabled: Boolean = false,
+    val startOnConfig: Boolean = true
 )
 
 enum class CommMode(val label: String) { USB("USB"), WiFi("WiFi"), Off("关闭") }
-enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"), VCAP("VCAP") }
+enum class InferenceBackend(val label: String) { Auto("自动"), CPU("CPU"), XNNPACK("XNNPACK"), NNAPI("NNAPI"), VCAP("VCAP"), TFLITE("TFLite"), TFLITE_GPU("TFLite GPU"), TFLITE_NNAPI("TFLite NNAPI") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,7 +135,7 @@ fun SettingsScreen(
                     }
                     // 第二行：NNAPI / VCAP
                     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        val row2 = InferenceBackend.entries.drop(3)
+                        val row2 = InferenceBackend.entries.slice(3..4)
                         row2.forEachIndexed { i, b ->
                             val enabled = b in enabledBackends
                             SegmentedButton(
@@ -142,6 +143,27 @@ fun SettingsScreen(
                                 onClick = { if (enabled) onBackendChange(b) },
                                 enabled = enabled,
                                 shape = SegmentedButtonDefaults.itemShape(i, row2.size),
+                                colors = SegmentedButtonDefaults.colors(
+                                    activeContainerColor = MaterialTheme.colorScheme.primary,
+                                    inactiveContainerColor = Color(0xFF2A2A2A),
+                                    disabledActiveContainerColor = Color(0xFF2A2A2A),
+                                    disabledInactiveContainerColor = Color(0xFF1A1A1A),
+                                    disabledActiveContentColor = Color.Gray,
+                                    disabledInactiveContentColor = Color.Gray
+                                )
+                            ) { Text(b.label, fontSize = 12.sp) }
+                        }
+                    }
+                    // 第三行：TFLite / TFLite GPU / TFLite NNAPI
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        val row3 = InferenceBackend.entries.drop(5)
+                        row3.forEachIndexed { i, b ->
+                            val enabled = b in enabledBackends
+                            SegmentedButton(
+                                selected = settings.inferenceBackend == b,
+                                onClick = { if (enabled) onBackendChange(b) },
+                                enabled = enabled,
+                                shape = SegmentedButtonDefaults.itemShape(i, row3.size),
                                 colors = SegmentedButtonDefaults.colors(
                                     activeContainerColor = MaterialTheme.colorScheme.primary,
                                     inactiveContainerColor = Color(0xFF2A2A2A),
