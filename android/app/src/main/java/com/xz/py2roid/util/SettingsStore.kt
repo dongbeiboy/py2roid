@@ -14,7 +14,7 @@ class SettingsStore(context: Context) {
             confidenceThreshold = prefs.getFloat("confidence", 0.5f),
             iouThreshold = prefs.getFloat("iou", 0.45f),
             commMode = CommMode.valueOf(prefs.getString("commMode", CommMode.USB.name) ?: CommMode.USB.name),
-            inferenceBackend = InferenceBackend.valueOf(prefs.getString("backend", InferenceBackend.NNAPI.name) ?: InferenceBackend.NNAPI.name),
+            inferenceBackend = InferenceBackend.valueOf(prefs.getString("backend", InferenceBackend.Auto.name) ?: InferenceBackend.Auto.name),
             debugOverlayEnabled = prefs.getBoolean("debugOverlay", false)
         )
     }

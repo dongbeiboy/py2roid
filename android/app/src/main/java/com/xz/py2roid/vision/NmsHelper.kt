@@ -7,15 +7,12 @@ object NmsHelper {
 
     fun nms(
         detections: List<DetectionResult>,
-        iouThreshold: Float,
-        confidenceThreshold: Float
+        iouThreshold: Float
     ): List<DetectionResult> {
-        // Step 1: filter by confidence threshold
-        val filtered = detections.filter { it.confidence >= confidenceThreshold }
-        if (filtered.isEmpty()) return emptyList()
+        if (detections.isEmpty()) return emptyList()
 
-        // Step 2: sort by confidence descending
-        val sorted = filtered.sortedByDescending { it.confidence }
+        // 按置信度降序排列
+        val sorted = detections.sortedByDescending { it.confidence }
 
         val result = mutableListOf<DetectionResult>()
         val suppressed = BooleanArray(sorted.size)

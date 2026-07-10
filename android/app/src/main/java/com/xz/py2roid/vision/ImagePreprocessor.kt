@@ -34,6 +34,11 @@ object ImagePreprocessor {
             yuvImage.compressToJpeg(rect, 100, out)
             val jpegData = out.toByteArray()
             out.close()
+            // 缓存 bitmap 尺寸校验：切换前后摄像头或分辨率变化时重新创建
+            if (cacheBitmap != null && (cacheBitmap!!.width != image.width || cacheBitmap!!.height != image.height)) {
+                cacheBitmap?.recycle()
+                cacheBitmap = null
+            }
             val bitmap = cacheBitmap ?: Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
             cacheBitmap = bitmap
             val jpegBitmap = android.graphics.BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size)
@@ -103,6 +108,7 @@ object ImagePreprocessor {
     fun close() {
         cacheMat?.release()
         cacheMat = null
+        cacheBitmap?.recycle()
         cacheBitmap = null
     }
 

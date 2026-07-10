@@ -7,10 +7,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtSession
 import com.xz.py2roid.ui.InferenceBackend
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.nio.FloatBuffer
-import kotlin.math.exp
 
 class Detector(
     private val context: Context,
@@ -22,6 +19,7 @@ class Detector(
 
     companion object {
         private const val TAG = "py2roid.Detector"
+        private const val DIAG_INTERVAL = 30  // 每 30 帧输出一次详细诊断
 
         val COCO_CLASSES = arrayOf(
             "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
@@ -64,6 +62,9 @@ class Detector(
     private var nnapiGarbageDetected = false
     private var currentModelPath: String? = null
 
+    // 诊断日志帧计数（每 DIAG_INTERVAL 帧输出一次详细诊断）
+    private var diagFrameCount = 0
+
     /** 快速验证模型输出是否合理（NNAPI 在某些芯片上返回全零） */
     private fun validateOutput(outputArray: FloatArray, numProposals: Int, numClasses: Int): Boolean {
         val step = (numProposals / 50).coerceAtLeast(1)
@@ -83,6 +84,8 @@ class Detector(
      */
     @Synchronized
     fun loadModel(modelPath: String, backend: InferenceBackend) {
+        // 关闭旧 session 防止 native 内存泄漏
+        closeSession()
         currentModelPath = modelPath
         nnapiGarbageDetected = false
 
@@ -233,7 +236,6 @@ class Detector(
 
             // 从 run 结果中取第一个输出名称（Result 用 iterator 遍历）
             val outName = output.iterator().next()
-            Log.d(TAG, "[D06] Using output: $outName")
 
             // 按索引取第一个输出 tensor（get(Int) 直接返回 OnnxValue，无 Optional 包装）
             val outputTensor = output.get(0) as? OnnxTensor
@@ -247,9 +249,8 @@ class Detector(
 
             // 输出解析：根据实际元素数判断格式
             val totalElements = outputArray.size
-            Log.d(TAG, "[D07] Output elements: $totalElements")
             if (totalElements < 84) {
-                Log.w(TAG, "[D08] Output too small, skipping frame")
+                Log.w(TAG, "[D08] Output too small ($totalElements), skipping frame")
                 return emptyList()
             }
 
@@ -261,21 +262,27 @@ class Detector(
             }
             val numFeatures = totalElements / numProposals
             val numClasses = numFeatures - 4
-            Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses")
 
-            // 抽样检查原始输出值 - 前 10 个 proposal
-            val sampleStr = (0 until 10.coerceAtMost(numProposals)).joinToString { i ->
-                val cx = outputArray[i]
-                val cy = outputArray[1 * numProposals + i]
-                val w = outputArray[2 * numProposals + i]
-                val h = outputArray[3 * numProposals + i]
-                val p0 = outputArray[4 * numProposals + i]
-                val p10 = outputArray[(4 + 10) * numProposals + i]
-                "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},p10=${"%.4f".format(p10)})"
+            // 每 DIAG_INTERVAL 帧输出一次详细诊断（采样 + 置信度分布）
+            diagFrameCount++
+            val isDiagFrame = diagFrameCount % DIAG_INTERVAL == 0
+            if (isDiagFrame) {
+                Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses output=$totalElements")
+
+                // 抽样检查原始输出值 - 前 10 个 proposal
+                val sampleStr = (0 until 10.coerceAtMost(numProposals)).joinToString { i ->
+                    val cx = outputArray[i]
+                    val cy = outputArray[1 * numProposals + i]
+                    val w = outputArray[2 * numProposals + i]
+                    val h = outputArray[3 * numProposals + i]
+                    val p0 = outputArray[4 * numProposals + i]
+                    val p10 = outputArray[(4 + 10) * numProposals + i]
+                    "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},p10=${"%.4f".format(p10)})"
+                }
+                Log.d(TAG, "[Sample] first 10: $sampleStr")
             }
-            Log.d(TAG, "[Sample] first 10: $sampleStr")
 
-            // 抽样统计全局置信度分布（每 100 个 proposal 采一个）
+            // 抽样统计全局置信度分布（轻量，每帧执行用于 NNAPI 回退判断）
             val diagStep = (numProposals / 100).coerceAtLeast(1)
             var diagMaxConf = 0f
             var diagHighCount = 0
@@ -290,7 +297,9 @@ class Detector(
                     if (best > 0.1f) diagHighCount++
                 }
             }
-            Log.d(TAG, "[Dist] sampled=${numProposals/diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")
+            if (isDiagFrame) {
+                Log.d(TAG, "[Dist] sampled=${numProposals/diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")
+            }
 
             // NNAPI 垃圾输出检测：所有类概率接近零 → 标记回退（下一帧生效）
             if (diagMaxConf < 0.01f && currentProvider == "NNAPI" && !nnapiGarbageDetected) {
@@ -346,8 +355,8 @@ class Detector(
                 )
             }
 
-            // Apply NMS
-            val finalDetections = NmsHelper.nms(detections, iouThreshold, confidenceThreshold)
+            // Apply NMS（调用方已按 confidenceThreshold 过滤，NMS 只做去重）
+            val finalDetections = NmsHelper.nms(detections, iouThreshold)
 
             val elapsed = System.currentTimeMillis() - startTime
             val fps = if (elapsed > 0) 1000f / elapsed else 0f
@@ -390,9 +399,5 @@ class Detector(
         }
         ortSession = null
         ortEnvironment = null
-    }
-
-    private fun sigmoid(x: Float): Float {
-        return 1.0f / (1.0f + exp(-x))
     }
 }

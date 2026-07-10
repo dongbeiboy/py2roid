@@ -1,6 +1,5 @@
 package com.xz.py2roid.vision
 
-import android.graphics.Rect
 import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
