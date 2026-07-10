@@ -43,8 +43,9 @@ build/
 .venv/
 venv/
 
-# ---- ONNX 模型（大文件，需手动下载） ----
+# ---- ONNX 模型（assets/models/ 下的模型文件直接入库） ----
 *.onnx
+!android/app/src/main/assets/models/*.onnx
 
 # ---- IDE ----
 .vscode/
@@ -62,3 +63,6 @@ plan.md
 .env
 *.local
 pair_adb.bat
+
+# ---- vivo 开放平台工具 ----
+.vivo/
