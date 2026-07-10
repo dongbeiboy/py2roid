@@ -38,19 +38,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
             ~/.gradle/wrapper
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/transforms-3
           key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/gradle.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
-
-      - name: Cache Android SDK
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk
-          key: android-sdk-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle.properties') }}
-          restore-keys: |
-            android-sdk-${{ runner.os }}-
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
