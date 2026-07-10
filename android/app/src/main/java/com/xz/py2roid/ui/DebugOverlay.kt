@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DebugOverlay(
     logLines: List<String>,
+    isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     if (logLines.isEmpty()) return
@@ -40,8 +42,8 @@ fun DebugOverlay(
 
     Column(
         modifier = modifier
-            .fillMaxWidth()
-            .height(160.dp)
+            .then(if (isLandscape) Modifier.width(280.dp) else Modifier.fillMaxWidth())
+            .height(120.dp)
             .background(Color(0x88000000), RoundedCornerShape(8.dp))
             .padding(horizontal = 6.dp, vertical = 4.dp)
             .verticalScroll(scrollState)

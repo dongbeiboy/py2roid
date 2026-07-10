@@ -107,8 +107,14 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                     _provider = "NNAPI"
                 }
                 InferenceBackend.VCAP, InferenceBackend.Auto -> {
-                    setIntraOpNumThreads(4)
-                    _provider = "CPU"
+                    try {
+                        addNnapi()
+                        _provider = "NNAPI"
+                    } catch (e: Exception) {
+                        setIntraOpNumThreads(4)
+                        _provider = "CPU"
+                        Log.w(TAG, "NNAPI unavailable in Auto/VCAP mode, fallback CPU")
+                    }
                 }
             }
         }

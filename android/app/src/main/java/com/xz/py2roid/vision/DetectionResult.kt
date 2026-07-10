@@ -10,7 +10,9 @@ data class DetectionResult(
     val x1: Float,
     val y1: Float,
     val x2: Float,
-    val y2: Float
+    val y2: Float,
+    /** 归一化参考帧的宽高比 (origWidth/origHeight)，用于 CameraPreview 校正 FILL_CENTER 坐标映射 */
+    val frameAspect: Float = 4f / 3f
 ) {
     fun toBoundingBox(labelColors: Map<String, Color>): BoundingBox {
         val color = labelColors[label] ?: Color(0xFF2196F3)
@@ -21,7 +23,8 @@ data class DetectionResult(
             y2 = y2,
             label = label,
             confidence = confidence,
-            color = color
+            color = color,
+            frameAspect = frameAspect
         )
     }
 }

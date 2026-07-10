@@ -1,10 +1,7 @@
 package com.xz.py2roid.vision
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.Image
 import android.util.Log
-import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -40,44 +37,45 @@ object ImagePreprocessor {
     /**
      * 预处理 CameraX 帧 → 模型输入张量。
      *
-     * 流程：NV21 → JPEG(quality=85) → Bitmap(ARGB_8888) → BGR Mat
-     * → letterbox 等比缩放 + 灰边填充到 targetWidth×targetHeight
+     * 流程：NV21 → BGR Mat → 旋转校正 → letterbox 等比缩放 + 灰边填充
      * → BGR→RGB → 分通道 → float32[3×H×W] → 归一化 [0,1]
      *
-     * 返回 [PreprocessResult]，内含张量 + 还原原始坐标所需的 letterbox 参数。
+     * @param image CameraX Image（传感器原始帧）
+     * @param rotationDegrees 图像旋转角度（0/90/180/270），取自 ImageProxy.imageInfo.rotationDegrees
+     * @return [PreprocessResult]，内含张量 + 还原原始坐标所需的 letterbox 参数
      */
     fun preprocess(
         image: Image,
+        rotationDegrees: Int = 0,
         targetWidth: Int = 640,
         targetHeight: Int = 640
     ): PreprocessResult {
         try {
             val t0 = System.currentTimeMillis()
 
-            // ── 1. YUV_420_888 → NV21 → JPEG(quality=85) → Bitmap ──
+            // ── 1. YUV_420_888 → NV21 → BGR Mat（跳过 JPEG，无损）──
             val nv21 = nv21FromYuv420(image)
-            val yuvImage = android.graphics.YuvImage(nv21, android.graphics.ImageFormat.NV21,
-                image.width, image.height, null)
-            val rect = android.graphics.Rect(0, 0, image.width, image.height)
-            val out = java.io.ByteArrayOutputStream()
-            yuvImage.compressToJpeg(rect, 85, out)
-            val jpegData = out.toByteArray()
-            out.close()
-
-            // 统一解码为 ARGB_8888，避免部分设备返回 RGB_565
-            val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-            val bitmap = android.graphics.BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, opts)
+            val nv21Mat = Mat(image.height * 3 / 2, image.width, CvType.CV_8UC1)
+            nv21Mat.put(0, 0, nv21)
+            val srcMat = Mat()
+            Imgproc.cvtColor(nv21Mat, srcMat, Imgproc.COLOR_YUV2BGR_NV21)
+            nv21Mat.release()
 
             val t1 = System.currentTimeMillis()
-            Log.d(TAG, "YUV→Bitmap ${image.width}x${image.height} qual=85 = ${t1 - t0}ms")
+            Log.d(TAG, "YUV→BGR ${image.width}x${image.height} = ${t1 - t0}ms")
 
-            // ── 2. Bitmap → BGR Mat ──
-            val srcMat = bitmapToMat(bitmap)
-            bitmap.recycle()
+            // ── 2. 旋转校正（传感器帧 → 屏幕方向） ──
+            if (rotationDegrees != 0) {
+                when (rotationDegrees) {
+                    90 -> Core.rotate(srcMat, srcMat, Core.ROTATE_90_CLOCKWISE)
+                    180 -> Core.rotate(srcMat, srcMat, Core.ROTATE_180)
+                    270 -> Core.rotate(srcMat, srcMat, Core.ROTATE_90_COUNTERCLOCKWISE)
+                }
+                Log.d(TAG, "Rotated ${rotationDegrees}°")
+            }
+
             val srcW = srcMat.width()
             val srcH = srcMat.height()
-            val t2 = System.currentTimeMillis()
-            Log.d(TAG, "Bitmap→BGR = ${t2 - t1}ms")
 
             // ── 3. Letterbox：等比缩放 + 灰边填充 ──
             val scale = minOf(targetWidth.toFloat() / srcW, targetHeight.toFloat() / srcH)
@@ -92,7 +90,7 @@ object ImagePreprocessor {
             Imgproc.resize(srcMat, resizedMat, Size(newW.toDouble(), newH.toDouble()))
             val t3 = System.currentTimeMillis()
             Log.d(TAG, "Letterbox ${srcW}x${srcH}→${targetWidth}x${targetHeight} " +
-                    "scale=%.3f new=${newW}x${newH} pad=($padLeft,$padTop) = ${t3 - t2}ms".format(scale))
+                    "scale=%.3f new=${newW}x${newH} pad=($padLeft,$padTop) = ${t3 - t1}ms".format(scale))
 
             // BGR → RGB（YOLO 期望 RGB 输入）
             val rgbMat = Mat()
@@ -239,12 +237,4 @@ object ImagePreprocessor {
         return nv21
     }
 
-    private fun bitmapToMat(bitmap: Bitmap): Mat {
-        val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
-        Utils.bitmapToMat(bitmap, mat)
-        val rgbMat = Mat()
-        Imgproc.cvtColor(mat, rgbMat, Imgproc.COLOR_RGBA2BGR)
-        mat.release()
-        return rgbMat
-    }
 }

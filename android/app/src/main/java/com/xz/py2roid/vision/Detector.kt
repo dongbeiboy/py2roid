@@ -193,7 +193,8 @@ class Detector(
                 val y2 = ((cyOrig + hOrig / 2f) / origH).coerceIn(0f, 1f)
 
                 val label = if (maxClassId in COCO_CLASSES.indices) COCO_CLASSES[maxClassId] else "class_$maxClassId"
-                rawDetections.add(DetectionResult(label, maxClassId, maxProb, x1, y1, x2, y2))
+                val frameAspect = origW / origH
+                rawDetections.add(DetectionResult(label, maxClassId, maxProb, x1, y1, x2, y2, frameAspect = frameAspect))
             }
 
             // NMS 前按置信度取 top-K，减少 O(n²) 开销

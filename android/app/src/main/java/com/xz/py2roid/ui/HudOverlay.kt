@@ -31,13 +31,18 @@ data class HudData(
 @Composable
 fun HudOverlay(
     hudData: HudData,
+    isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
-        // 左上区：FPS / 推理后端 / 帧耗时 / CPU/GPU
         val gpuText = if (hudData.gpuLoad < 0) "GPU N/A" else "GPU ${hudData.gpuLoad}%"
+        val p = if (isLandscape) 4.dp else 8.dp
+        // 横屏时右侧给 ControlBar 留出空间（56dp 栏宽 + 4dp 间距）
+        val endPadding = if (isLandscape) 60.dp else p
+
+        // 左上：FPS/推理/耗时/CPU/GPU
         HudBadge(
-            text = "${hudData.fps.toInt()} FPS | ${hudData.provider} | ${hudData.frameTimeMs}ms\nCPU ${hudData.cpuLoad}% ${hudData.cpuTemp}℃ | $gpuText",
+            text = "${"%.0f".format(hudData.fps)} FPS | ${hudData.provider} | ${hudData.frameTimeMs}ms\nCPU ${hudData.cpuLoad}% ${hudData.cpuTemp}℃ | $gpuText",
             color = when {
                 hudData.cpuTemp >= 90 -> Color(0xFFFF5252)
                 hudData.cpuTemp >= 75 -> Color(0xFFFFD740)
@@ -45,16 +50,16 @@ fun HudOverlay(
             },
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(8.dp)
+                .padding(start = p, top = p)
         )
 
-        // 右上区：目标数 / 通讯状态
+        // 右上：目标数/通讯（横屏时避开右侧按钮栏）
         HudBadge(
-            text = "目标: ${hudData.targetCount} | ${hudData.commState}",
+            text = "目标:${hudData.targetCount} ${hudData.commState}",
             color = if (hudData.targetCount > 0) Color(0xFF4CAF50) else Color(0xFF888888),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(8.dp)
+                .padding(end = endPadding, top = p)
         )
     }
 }

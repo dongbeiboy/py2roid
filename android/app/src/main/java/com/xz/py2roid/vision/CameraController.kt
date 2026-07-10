@@ -2,6 +2,7 @@ package com.xz.py2roid.vision
 
 import android.util.Log
 import android.util.Size
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -86,8 +87,9 @@ class CameraController(
         provider.unbindAll()
 
         try {
-            // Preview use case
+            // Preview use case — 与 ImageAnalysis 保持一致比例，避免 FILL_CENTER 缩放不一致
             val preview = Preview.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
                 .build()
                 .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 

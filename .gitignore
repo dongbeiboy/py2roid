@@ -43,6 +43,10 @@ build/
 .venv/
 venv/
 
+# ---- Eval 数据（图片集、评测输出） ----
+tools/eval/coco_images/
+tools/eval/output/
+
 # ---- ONNX 模型（assets/models/ 下的模型文件直接入库） ----
 *.onnx
 !android/app/src/main/assets/models/*.onnx
@@ -66,3 +70,5 @@ pair_adb.bat
 
 # ---- vivo 开放平台工具 ----
 .vivo/
+tools/eval/coco_val2017.zip
+screen.png

@@ -18,8 +18,8 @@ android {
         applicationId = "com.xz.py2roid"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.0.8"
+        versionCode = 9
+        versionName = "1.0.9"
 
         ndk {
             abiFilters += listOf("arm64-v8a")

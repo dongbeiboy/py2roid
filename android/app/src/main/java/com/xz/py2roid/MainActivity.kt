@@ -149,7 +149,8 @@ class MainActivity : ComponentActivity() {
                     BoundingBox(
                         x1 = r.x1, y1 = r.y1, x2 = r.x2, y2 = r.y2,
                         label = r.label, confidence = r.confidence,
-                        color = labelColors[r.label] ?: androidx.compose.ui.graphics.Color(0xFF2196F3)
+                        color = labelColors[r.label] ?: androidx.compose.ui.graphics.Color(0xFF2196F3),
+                        frameAspect = r.frameAspect
                     )
                 }
                 viewModel.updateBoxes(boxes)
@@ -206,7 +207,7 @@ class MainActivity : ComponentActivity() {
                     val imgW = imageProxy.width
                     val imgH = imageProxy.height
                     try {
-                        val preResult = ImagePreprocessor.preprocess(image)
+                        val preResult = ImagePreprocessor.preprocess(image, imageProxy.imageInfo.rotationDegrees)
                         val preMs = System.currentTimeMillis() - frameStart
                         val results = det.detect(preResult)
                         val totalMs = System.currentTimeMillis() - frameStart
@@ -279,6 +280,19 @@ class MainActivity : ComponentActivity() {
         if (isRunning) {
             Logger.d("Resuming camera after screen unlock")
             cameraController?.startCamera()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // configChanges 阻止了 Activity 重建，需手动重启相机以适配新方向
+        if (isRunning) {
+            Logger.d("Configuration changed, restarting camera")
+            lifecycleScope.launch(Dispatchers.IO) {
+                cameraController?.stopCamera()
+                kotlinx.coroutines.delay(300)
+                cameraController?.startCamera()
+            }
         }
     }
 

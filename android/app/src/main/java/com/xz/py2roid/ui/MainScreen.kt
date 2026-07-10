@@ -3,6 +3,7 @@ package com.xz.py2roid.ui
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -50,11 +51,13 @@ fun MainScreen(
         viewModel.setPreviewView(previewView)
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        val isLandscape = maxWidth > maxHeight
+
         // 相机层始终在 composition 中，切设置页时保持 Surface
         CameraPreview(
             previewView = previewView,
@@ -89,27 +92,49 @@ fun MainScreen(
                         cpuTemp = hudInfo.cpuTemp,
                         gpuLoad = hudInfo.gpuLoad
                     ),
+                    isLandscape = isLandscape,
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // 底部控制栏
-                ControlBar(
-                    onSettingsClick = viewModel::navigateToSettings,
-                    onModelClick = viewModel::showModelPicker,
-                    onCommClick = { },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                )
-
-                // 调试日志覆盖层（在控制栏之上）
-                if (settings.debugOverlayEnabled) {
-                    DebugOverlay(
-                        logLines = logLines,
+                // 控制栏（竖屏底部 / 横屏右侧）
+                if (isLandscape) {
+                    ControlBar(
+                        isLandscape = true,
+                        onSettingsClick = viewModel::navigateToSettings,
+                        onModelClick = viewModel::showModelPicker,
+                        onCommClick = { },
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                    )
+                } else {
+                    ControlBar(
+                        onSettingsClick = viewModel::navigateToSettings,
+                        onModelClick = viewModel::showModelPicker,
+                        onCommClick = { },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 56.dp)
+                            .navigationBarsPadding()
                     )
+                }
+
+                // 调试日志覆盖层
+                if (settings.debugOverlayEnabled) {
+                    if (isLandscape) {
+                        DebugOverlay(
+                            logLines = logLines,
+                            isLandscape = true,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 8.dp, bottom = 8.dp)
+                        )
+                    } else {
+                        DebugOverlay(
+                            logLines = logLines,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 56.dp)
+                        )
+                    }
                 }
             }
         }
