@@ -83,6 +83,12 @@ fun MainScreen(
 
         when (screen) {
             AppScreen.Config -> {
+                // 配置页显示系统状态栏
+                DisposableEffect(Unit) {
+                    val w = (view.context as? android.app.Activity)?.window
+                    showSystemBars(w)
+                    onDispose { hideSystemBars(w) }
+                }
                 ConfigScreen(
                     models = models,
                     selectedModel = selectedModel,
@@ -105,7 +111,8 @@ fun MainScreen(
                     onCommModeChange = viewModel::updateCommMode,
                     onBackendChange = viewModel::updateBackend,
                     onDebugOverlayChange = viewModel::updateDebugOverlay,
-                    onBack = viewModel::navigateToMain
+                    onBack = viewModel::navigateToMain,
+                    onGoConfig = viewModel::navigateToConfig
                 )
             }
 

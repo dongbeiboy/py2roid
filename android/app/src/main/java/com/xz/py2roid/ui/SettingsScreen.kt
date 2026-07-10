@@ -12,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,7 +59,8 @@ fun SettingsScreen(
     onCommModeChange: (CommMode) -> Unit,
     onBackendChange: (InferenceBackend) -> Unit,
     onDebugOverlayChange: (Boolean) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onGoConfig: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -213,6 +216,18 @@ fun SettingsScreen(
                     AboutRow("视觉引擎", "ONNX Runtime + ${settings.inferenceBackend.label}")
                     AboutRow("Python", "3.12 (Chaquopy)")
                 }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // → 预配置
+            Button(
+                onClick = onGoConfig,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2A2A), contentColor = Color(0xFF4CAF50)),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text("→ 预配置", fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
 
             Spacer(Modifier.height(32.dp))

@@ -27,3 +27,11 @@
 # OpenCV
 -keep class org.opencv.** { *; }
 -dontwarn org.opencv.**
+
+# TensorFlow Lite GPU delegate
+-keep class org.tensorflow.lite.gpu.** { *; }
+-dontwarn org.tensorflow.lite.gpu.**
+
+# TensorFlow Lite support
+-keep class org.tensorflow.lite.support.** { *; }
+-dontwarn org.tensorflow.lite.support.**

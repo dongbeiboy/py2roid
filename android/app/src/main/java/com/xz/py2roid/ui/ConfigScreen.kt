@@ -1,6 +1,7 @@
 package com.xz.py2roid.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -27,6 +28,7 @@ fun ConfigScreen(
     onOpenSettings: () -> Unit
 ) {
     Scaffold(
+        modifier = Modifier.statusBarsPadding(),
         topBar = {
             TopAppBar(
                 title = { Text("预配置", fontWeight = FontWeight.SemiBold) },
