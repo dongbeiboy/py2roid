@@ -116,6 +116,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         val inputBuffer = java.nio.ByteBuffer.allocateDirect(nhwcArray.size * 4)
         inputBuffer.order(java.nio.ByteOrder.nativeOrder())
         inputBuffer.asFloatBuffer().put(nhwcArray)
+        inputBuffer.rewind()
 
         val outputBuffer = java.nio.ByteBuffer.allocateDirect(outputSize * 4)
         outputBuffer.order(java.nio.ByteOrder.nativeOrder())
@@ -124,6 +125,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         outputs[0] = outputBuffer
         interp.runForMultipleInputsOutputs(arrayOf<Any>(inputBuffer), outputs)
 
+        outputBuffer.rewind()
         val outArray = FloatArray(outputSize)
         outputBuffer.asFloatBuffer().get(outArray)
         return outArray
