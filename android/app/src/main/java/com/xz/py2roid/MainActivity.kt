@@ -106,12 +106,25 @@ class MainActivity : ComponentActivity() {
             val screen by viewModel.screen.collectAsState()
             val cameraPermissionGranted by viewModel.cameraPermissionGranted.collectAsState()
             val modelsReady by viewModel.modelsReady.collectAsState()
+            val startRequested by viewModel.startRequested.collectAsState()
+            val currentSettings by viewModel.settings.collectAsState()
 
-            // 当 previewView 就绪、权限已授予且模型已就绪，启动相机
-            if (previewView != null && cameraPermissionGranted && modelsReady && !isRunning) {
-                isRunning = true
-                lifecycleScope.launch {
+            // ── 启动检测 ──
+            // startRequested 由 ConfigScreen "开始检测" / ADB 模式 / 直启模式发出，
+            // 等所有条件就绪后执行 startDetection()
+            LaunchedEffect(startRequested, previewView, cameraPermissionGranted, modelsReady) {
+                if (startRequested && previewView != null && cameraPermissionGranted && modelsReady && !isRunning) {
+                    isRunning = true
                     startDetection(viewModel, previewView!!)
+                }
+            }
+
+            // 自动触发 startRequested：
+            //   - ADB 调试模式 → 直接跑
+            //   - startOnConfig=false → 用户选择了直启，不等手动
+            LaunchedEffect(Unit) {
+                if (adbActive || !currentSettings.startOnConfig) {
+                    viewModel.requestStart()
                 }
             }
 
@@ -129,7 +142,6 @@ class MainActivity : ComponentActivity() {
             }
 
             // 实时同步设置 → Detector（阈值滑块即时生效）
-            val currentSettings by viewModel.settings.collectAsState()
             val selectedModelName by viewModel.selectedModel.collectAsState()
             val prevBackend = remember { mutableStateOf(currentSettings.inferenceBackend) }
             val prevModel = remember { mutableStateOf(selectedModelName) }

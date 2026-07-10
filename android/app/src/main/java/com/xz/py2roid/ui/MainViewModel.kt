@@ -79,6 +79,12 @@ class MainViewModel : ViewModel() {
     private val _isDetecting = MutableStateFlow(false)
     val isDetecting: StateFlow<Boolean> = _isDetecting.asStateFlow()
 
+    // 启动检测触发信号（由 ConfigScreen "开始检测" / ADB / 直启模式发出）
+    private val _startRequested = MutableStateFlow(false)
+    val startRequested: StateFlow<Boolean> = _startRequested.asStateFlow()
+
+    fun requestStart() { _startRequested.value = true }
+
     // Navigation
     fun navigateToConfig() { _screen.value = AppScreen.Config }
     fun navigateToMain() { _screen.value = AppScreen.Main }

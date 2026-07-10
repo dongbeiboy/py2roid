@@ -99,7 +99,10 @@ fun MainScreen(
                     onModelSelected = viewModel::selectModel,
                     onBackendChange = viewModel::updateBackend,
                     onStartOnConfigChange = viewModel::updateStartOnConfig,
-                    onStart = viewModel::navigateToMain,
+                    onStart = {
+                        viewModel.requestStart()
+                        viewModel.navigateToMain()
+                    },
                     onOpenSettings = viewModel::navigateToSettings
                 )
             }
