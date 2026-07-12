@@ -73,44 +73,66 @@ jobs:
           # 获取上一个 tag
           PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 || echo "")
           if [ -z "$PREV_TAG" ]; then
-            # 第一个 release，取所有历史
             RANGE="HEAD"
           else
             RANGE="$PREV_TAG..HEAD"
           fi
 
-          # 按 conventional commit 类型分类
-          FEATS=$(git log "$RANGE" --oneline --no-decorate --grep="^feat" 2>/dev/null || true)
-          FIXES=$(git log "$RANGE" --oneline --no-decorate --grep="^fix" 2>/dev/null || true)
-          REFACTOR=$(git log "$RANGE" --oneline --no-decorate --grep="^refactor" 2>/dev/null || true)
-          DOCS=$(git log "$RANGE" --oneline --no-decorate --grep="^docs" 2>/dev/null || true)
-          PERF=$(git log "$RANGE" --oneline --no-decorate --grep="^perf" 2>/dev/null || true)
-          OTHER=$(git log "$RANGE" --oneline --no-decorate 2>/dev/null | grep -v "^[a-f0-9]\{7,9\} feat" | grep -v "^[a-f0-9]\{7,9\} fix" | grep -v "^[a-f0-9]\{7,9\} refactor" | grep -v "^[a-f0-9]\{7,9\} docs" | grep -v "^[a-f0-9]\{7,9\} perf" || true)
+          # 一次性获取所有 commit（带 hash + subject），再按类型分类
+          ALL_COMMITS=$(git log "$RANGE" --oneline --no-decorate 2>/dev/null || true)
 
-          # 构建 Markdown 分类 changelog
-          CHANGELOG=""
-          append_section() {
-            local title="$1" content="$2"
-            if [ -n "$content" ]; then
-              CHANGELOG="${CHANGELOG}\n\n### $title\n${content}"
-            fi
-          }
-          append_section "🚀 新功能" "$FEATS"
-          append_section "🐛 Bug 修复" "$FIXES"
-          append_section "♻️ 重构" "$REFACTOR"
-          append_section "📝 文档" "$DOCS"
-          append_section "⚡ 性能优化" "$PERF"
-
-          if [ -n "$OTHER" ]; then
-            CHANGELOG="${CHANGELOG}\n\n### 🔧 其他\n${OTHER}"
+          if [ -z "$ALL_COMMITS" ]; then
+            echo "changelog=*无提交记录*" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          # 输出（转义换行符为 %0A 供 GITHUB_OUTPUT 使用）
-          CHANGELOG="${CHANGELOG:-*首次发布*}"
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          printf "%b" "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # 用扩展正则精确匹配 conventional commit 格式（支持 scope 和 bang）
+          FEATS=$(    echo "$ALL_COMMITS" | grep -E "^[a-f0-9]+\s+(feat)(\(.*\))?(!)?:" || true)
+          FIXES=$(    echo "$ALL_COMMITS" | grep -E "^[a-f0-9]+\s+(fix)(\(.*\))?(!)?:" || true)
+          REFACTOR=$( echo "$ALL_COMMITS" | grep -E "^[a-f0-9]+\s+(refactor)(\(.*\))?(!)?:" || true)
+          DOCS=$(     echo "$ALL_COMMITS" | grep -E "^[a-f0-9]+\s+(docs)(\(.*\))?(!)?:" || true)
+          PERF=$(     echo "$ALL_COMMITS" | grep -E "^[a-f0-9]+\s+(perf)(\(.*\))?(!)?:" || true)
+          OTHER=$(    echo "$ALL_COMMITS" | grep -vE "^[a-f0-9]+\s+(feat|fix|refactor|docs|perf)(\(.*\))?(!)?:" || true)
+
+          # 用 heredoc 安全输出（避免 printf % 转义问题）
+          {
+            echo "changelog<<EOF"
+            if [ -n "$FEATS" ]; then
+              echo ""
+              echo "### 🚀 新功能"
+              echo "$FEATS"
+            fi
+            if [ -n "$FIXES" ]; then
+              echo ""
+              echo "### 🐛 Bug 修复"
+              echo "$FIXES"
+            fi
+            if [ -n "$REFACTOR" ]; then
+              echo ""
+              echo "### ♻️ 重构"
+              echo "$REFACTOR"
+            fi
+            if [ -n "$DOCS" ]; then
+              echo ""
+              echo "### 📝 文档"
+              echo "$DOCS"
+            fi
+            if [ -n "$PERF" ]; then
+              echo ""
+              echo "### ⚡ 性能优化"
+              echo "$PERF"
+            fi
+            if [ -n "$OTHER" ]; then
+              echo ""
+              echo "### 🔧 其他"
+              echo "$OTHER"
+            fi
+            # 如果没有任何分类匹配
+            if [ -z "$FEATS$FIXES$REFACTOR$DOCS$PERF$OTHER" ]; then
+              echo "*首次发布*"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -128,4 +150,3 @@ jobs:
 
             > 由 GitHub Actions 自动构建。
           files: ${{ steps.locate-apk.outputs.apk-path }}
-          generate_release_notes: true
