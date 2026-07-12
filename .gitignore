@@ -49,6 +49,9 @@ venv/
 *.npy
 android/app/src/main/assets/models/*_tflite/
 
+# ---- 文档 ----
+docs/
+
 # ---- ONNX / TFLite 模型（assets/models/ 下已入库的除外） ----
 *.onnx
 *.tflite
