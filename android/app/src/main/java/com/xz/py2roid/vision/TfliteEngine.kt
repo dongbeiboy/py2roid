@@ -101,6 +101,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             interpreter = Interpreter(buffer, options)
             readShapes()
             Logger.i("Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight} output=$outputSize")
+            Logger.i("[Debug] inType=$inputDataType outType=$outputDataType inScale=$inputScale inZp=$inputZeroPoint outScale=$outputScale outZp=$outputZeroPoint")
         } catch (e: Exception) {
             val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
             // GPU delegate 失败时回退 CPU
@@ -133,16 +134,19 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         val inputBuffer: ByteBuffer
         val isInputQuantized = inputDataType != DataType.FLOAT32
         if (isInputQuantized) {
-            // float [0,1] → quantized uint8/int8
             val elemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else 2
-            inputBuffer = ByteBuffer.allocateDirect(nhwcArray.size * elemBytes)
+            val bufSize = nhwcArray.size * elemBytes
+            Logger.d("[Debug] quant input: type=$inputDataType elemBytes=$elemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
+            inputBuffer = ByteBuffer.allocateDirect(bufSize)
             inputBuffer.order(ByteOrder.nativeOrder())
             for (v in nhwcArray) {
                 val q = (v / inputScale + inputZeroPoint + 0.5f).toInt()
                 inputBuffer.put(q.toByte())
             }
         } else {
-            inputBuffer = ByteBuffer.allocateDirect(nhwcArray.size * 4)
+            val bufSize = nhwcArray.size * 4
+            Logger.d("[Debug] float input: bufSize=$bufSize")
+            inputBuffer = ByteBuffer.allocateDirect(bufSize)
             inputBuffer.order(ByteOrder.nativeOrder())
             inputBuffer.asFloatBuffer().put(nhwcArray)
         }
@@ -153,7 +157,9 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         val outElemBytes = if (isOutputQuantized) {
             if (outputDataType == DataType.INT8 || outputDataType == DataType.UINT8) 1 else 2
         } else 4
-        val outputBuffer = ByteBuffer.allocateDirect(outputSize * outElemBytes)
+        val outBufSize = outputSize * outElemBytes
+        Logger.d("[Debug] output: type=$outputDataType elemBytes=$outElemBytes bufSize=$outBufSize scale=$outputScale zp=$outputZeroPoint")
+        val outputBuffer = ByteBuffer.allocateDirect(outBufSize)
         outputBuffer.order(ByteOrder.nativeOrder())
 
         val outputs = java.util.HashMap<Int, Any>()
@@ -164,12 +170,20 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         outputBuffer.rewind()
         val outArray = FloatArray(outputSize)
         if (isOutputQuantized) {
+            var maxVal = 0f
+            var sumVal = 0f
             for (i in 0 until outputSize) {
                 val q = outputBuffer.get().toInt() and 0xFF // unsigned byte
-                outArray[i] = (q - outputZeroPoint).toFloat() * outputScale
+                val v = (q - outputZeroPoint).toFloat() * outputScale
+                outArray[i] = v
+                if (v > maxVal) maxVal = v
+                sumVal += v
             }
+            Logger.d("[Debug] output dequant: max=$maxVal avg=${sumVal / outputSize} first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         } else {
             outputBuffer.asFloatBuffer().get(outArray)
+            val maxVal = outArray.max()
+            Logger.d("[Debug] output float: max=$maxVal first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         }
         return outArray
     }
