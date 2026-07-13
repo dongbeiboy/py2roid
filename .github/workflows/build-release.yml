@@ -41,9 +41,40 @@ jobs:
             ~/.gradle/wrapper
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/transforms-3
+            ~/.gradle/buildOutputCache
           key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/gradle.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
+
+      # Chaquopy 的 Python 交叉编译产物（最大耗时点，缓存后省 3-5 分钟）
+      - name: Cache Chaquopy
+        uses: actions/cache@v4
+        with:
+          path: ~/.chaquo
+          key: chaquopy-${{ runner.os }}-${{ hashFiles('android/app/python.gradle', 'android/app/build.gradle.kts') }}
+          restore-keys: |
+            chaquopy-${{ runner.os }}-
+
+      # pip 下载缓存（numpy、Pillow 等原生包重复下载）
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('android/app/python.gradle') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      # Android SDK 组件缓存（platforms、build-tools）
+      - name: Cache Android SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/platforms
+            ${{ env.ANDROID_HOME }}/build-tools
+            ${{ env.ANDROID_HOME }}/ndk
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/**/*.gradle') }}
+          restore-keys: |
+            android-sdk-${{ runner.os }}-
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -57,7 +88,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --parallel --build-cache
         working-directory: android
 
       - name: Locate APK
