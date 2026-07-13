@@ -13,8 +13,8 @@ from typing import Optional
 class HaarCascade:
     """OpenMV HaarCascade 兼容实现。
 
-    使用 Pillow 的内置级联或简单的占位。实际级联检测需要 OpenCV。
-    当前实现为占位，返回空列表。
+    使用 scipy.ndimage 做简单特征检测近似。
+    实际级联检测需要 OpenCV 的 haarcascades，当前为简化实现。
     """
 
     _CASCADE_MAP = {
@@ -26,13 +26,54 @@ class HaarCascade:
     def __init__(self, cascade_name: str):
         self._name = cascade_name
 
-    def detect(self, image, scale_factor=1.1, min_neighbors=3, **kwargs):
-        """执行检测（占位实现）。
+    def detect(self, image, roi=None) -> list:
+        """执行特征检测。
+
+        当前实现：基于亮度直方图的简单区域分割。
+        完整 Haar 级联需要 OpenCV Python 包。
 
         Returns:
-            [] — 暂未实现，需 OpenCV
+            FeatureList 或空列表
         """
-        return []
+        from .image import Feature, FeatureList, Image as Img
+
+        if isinstance(image, Img):
+            gray = image._get_gray_data(roi)
+        else:
+            gray = image
+        if roi is not None:
+            rx, ry, _, _ = roi
+        else:
+            rx = ry = 0
+
+        h, w = gray.shape
+        if h < 24 or w < 24:
+            return FeatureList([])
+
+        # 简单：基于局部方差检测类脸区域
+        from scipy import ndimage as ndi
+        local_std = ndi.uniform_filter(gray.astype(float), size=12)
+        local_mean = ndi.uniform_filter(gray.astype(float), size=24)
+        diff = np.abs(gray.astype(float) - local_mean)
+        candidate = (diff > 30).astype(np.uint8)
+
+        # 连通域
+        labeled, num = ndi.label(candidate)
+        results = []
+        for label_id in range(1, num + 1):
+            ys, xs = np.where(labeled == label_id)
+            if len(xs) < 50:
+                continue
+            x_min, x_max = int(xs.min()), int(xs.max())
+            y_min, y_max = int(ys.min()), int(ys.max())
+            fw, fh = x_max - x_min, y_max - y_min
+            if fw < 20 or fh < 20 or fw > w * 0.8 or fh > h * 0.8:
+                continue
+            results.append(Feature(
+                x=x_min + rx, y=y_min + ry, w=fw, h=fh
+            ))
+
+        return FeatureList(results)
 
 
 class Predictions:
