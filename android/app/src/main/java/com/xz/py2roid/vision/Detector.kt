@@ -156,8 +156,10 @@ class Detector(
                     val w = outputArray[2 * numProposals + i]
                     val h = outputArray[3 * numProposals + i]
                     val p0 = outputArray[4 * numProposals + i]
-                    val p10 = outputArray[(4 + 10) * numProposals + i]
-                    "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},p10=${"%.4f".format(p10)})"
+                    // 采样最后一个类别（兼容少类别模型，如 last.onnx 只有 2 类）
+                    val lastClassIdx = (numClasses - 1).coerceAtLeast(0)
+                    val pLast = outputArray[(4 + lastClassIdx) * numProposals + i]
+                    "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},pLast=${"%.4f".format(pLast)})"
                 }
                 Log.d(TAG, "[Sample] first 10: $sampleStr")
                 Log.d(TAG, "[Dist] sampled=${numProposals / diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")

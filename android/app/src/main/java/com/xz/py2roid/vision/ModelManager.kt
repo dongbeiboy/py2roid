@@ -41,6 +41,12 @@ class ModelManager(private val context: Context) {
             val assetsPath = ASSETS_MODELS_DIR
             val assetList = context.assets.list(assetsPath) ?: emptyArray()
             for (assetName in assetList) {
+                // 跳过子目录（如 TFLite saved_model 格式的文件夹）
+                val subList = context.assets.list("$assetsPath/$assetName")
+                if (subList != null && subList.isNotEmpty()) {
+                    Log.d(TAG, "Skipping directory: $assetName")
+                    continue
+                }
                 val targetFile = File(dir, assetName)
                 if (targetFile.exists()) {
                     Log.d(TAG, "Skipping existing model: $assetName")
