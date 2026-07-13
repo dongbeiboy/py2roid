@@ -94,6 +94,12 @@ class MainViewModel : ViewModel() {
         _settings.value = _settings.value.copy(appMode = mode)
     }
 
+    /** 从磁盘加载的完整设置覆盖 StateFlow */
+    fun applySavedSettings(saved: AppSettings) {
+        _settings.value = saved
+        _selectedModel.value = "" // 不覆盖模型选择，由 LaunchedEffect 管理
+    }
+
     // ── 脚本状态 ──
     private val _scriptState = MutableStateFlow(ScriptRunner.ScriptState.IDLE)
     val scriptState: StateFlow<ScriptRunner.ScriptState> = _scriptState.asStateFlow()

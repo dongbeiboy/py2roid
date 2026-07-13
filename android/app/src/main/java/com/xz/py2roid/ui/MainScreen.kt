@@ -148,6 +148,7 @@ fun MainScreen(
                     enabledBackends = viewModel.enabledBackends,
                     onModelSelected = viewModel::selectModel,
                     onBackendChange = viewModel::updateBackend,
+                    onAppModeChange = viewModel::updateAppMode,
                     onStartOnConfigChange = viewModel::updateStartOnConfig,
                     onStart = {
                         viewModel.requestStart()

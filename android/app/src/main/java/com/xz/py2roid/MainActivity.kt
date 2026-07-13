@@ -109,9 +109,8 @@ class MainActivity : ComponentActivity() {
         }
 
         // 从磁盘加载设置到 ViewModel（让 Config/Settings 页显示真实值）
-        settingsStore.load().let { saved ->
-            viewModel.applySavedSettings(saved)
-        }
+        val loadedSettings = settingsStore.load()
+        viewModel.applySavedSettings(loadedSettings)
 
         setContent {
             val previewView by viewModel.previewView.collectAsState()
