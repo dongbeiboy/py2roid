@@ -1,0 +1,46 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1e1e1e;color:#d4d4d4;font:13px/1.5 'Cascadia Code','JetBrains Mono','Consolas',monospace;padding:12px;padding-top:0}
+
+/* ---- 顶栏 ---- */
+.f-bar{position:sticky;top:0;z-index:10;background:#1e1e1e;padding:8px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #333;margin-bottom:6px}
+.f-bar input[type=text]{flex:1;min-width:200px;background:#1e1e1e;border:1px solid #444;color:#d4d4d4;padding:6px 10px;border-radius:4px;font:inherit;transition:border-color .15s}
+.f-bar input[type=text]:focus{outline:none;border-color:#569cd6}
+.f-bar input[type=text]::placeholder{color:#555}
+.f-bar input[type=checkbox]{accent-color:#4ec9b0;width:14px;height:14px;cursor:pointer;vertical-align:middle}
+.f-bar label{color:#888;font-size:12px;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:3px}
+#count{color:#888;font-size:12px}
+#usage{color:#888;font-size:12px}
+
+/* ---- Stats HUD ---- */
+#hud{display:inline-flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0;background:#1a2a1a;border:1px solid #2a4a2a;border-radius:4px;padding:0 8px;height:22px;transition:opacity .3s}
+#hud:empty{display:none}
+#hud .h-cpu{color:#4ec9b0}
+#hud .h-temp{color:#ce9178}
+#hud .h-gpu{color:#569cd6}
+#hud .h-na{color:#555}
+
+#status{font-size:12px;margin-left:auto}
+
+/* ---- 日志行 ---- */
+#log{white-space:pre-wrap;word-break:break-all}
+.line{padding:2px 0;display:flex;align-items:baseline;gap:6px;border-radius:2px;transition:background .05s}
+.line:hover{background:#2a2d2e}
+.line.sel{background:#264f78 !important}
+
+/* 时间戳 */
+.t{color:#569cd6;flex-shrink:0;font-size:12px;min-width:62px}
+/* 级别徽标 */
+.lvl{display:inline-flex;align-items:center;justify-content:center;width:20px;height:16px;border-radius:3px;font-size:11px;font-weight:700;flex-shrink:0;line-height:1}
+.lvl-I{background:#1a3a1a;color:#4ec9b0}
+.lvl-E{background:#3a1a1a;color:#f44747}
+.lvl-W{background:#3a2a0a;color:#ce9178}
+.lvl-D{background:#1a2a3a;color:#569cd6}
+.lvl-V{background:#2a2a2a;color:#808080}
+/* 来源标签 */
+.src{color:#c586c0;flex-shrink:0;font-size:12px;min-width:36px}
+/* 消息 */
+.msg{flex:1}
+/* Stats 冷凝计数 */
+.repeat{color:#888;font-size:11px;flex-shrink:0;margin-left:auto;padding:0 4px;background:#2a2a2a;border-radius:3px}
+/* 搜索高亮 */
+mark{background:#b8952a;color:#1e1e1e;padding:0 2px;border-radius:2px}

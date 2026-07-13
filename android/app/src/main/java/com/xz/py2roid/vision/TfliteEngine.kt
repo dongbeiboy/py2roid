@@ -3,11 +3,14 @@ package com.xz.py2roid.vision
 import android.content.Context
 import com.xz.py2roid.util.Logger
 import com.xz.py2roid.ui.InferenceBackend
+import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.nnapi.NnApiDelegate
 import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
@@ -44,6 +47,12 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
     private var _inputHeight = 640
     private var _inputChannels = 3
     private var outputSize = 0
+    private var inputDataType: DataType = DataType.FLOAT32
+    private var outputDataType: DataType = DataType.FLOAT32
+    private var inputScale = 1f
+    private var inputZeroPoint = 0
+    private var outputScale = 1f
+    private var outputZeroPoint = 0
 
     override val name get() = "TFLite"
     override val provider get() = _provider
@@ -71,13 +80,21 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
                 InferenceBackend.TFLITE_NNAPI -> {
                     nnapiDelegate = NnApiDelegate()
                     options.addDelegate(nnapiDelegate)
+                    // NNAPI 不支持的 op 会回退 CPU，必须设置线程数兜底
+                    options.setNumThreads(4)
                     _provider = "TFLite_NNAPI"
                 }
                 else -> {
                     options.setNumThreads(4)
-                    // onnx2tf 导出的模型含 PAD op，XNNPACK delegate 在 2.16.1 上有兼容问题
-                    options.setUseXNNPACK(false)
-                    _provider = "TFLite"
+                    // INT8 / dynamic range 模型无 PAD op 问题，启用 XNNPACK 加速
+                    // FP32/FP16 的 onnx2tf 模型若 XNNPACK 失败会自动回退
+                    try {
+                        options.setUseXNNPACK(true)
+                        _provider = "TFLite_XNNPACK"
+                    } catch (_: Exception) {
+                        options.setUseXNNPACK(false)
+                        _provider = "TFLite"
+                    }
                 }
             }
 
@@ -105,7 +122,6 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
 
         // TFLite 输入 shape: [1, H, W, 3] or [1, 3, H, W]
         // ONNX 输入是 [1, 3, H, W] CHW，TFLite 默认 NHWC
-        // 需要从 CHW 转为 NHWC
         val chwArray = inputTensor
         val nhwcArray = if (_inputChannels == 3) {
             chwToNhwc(chwArray)
@@ -113,22 +129,48 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             chwArray
         }
 
-        // 用 ByteBuffer 方式传输入输出，绕过 writeMultiDimensionalArray 的 shape 校验
-        val inputBuffer = java.nio.ByteBuffer.allocateDirect(nhwcArray.size * 4)
-        inputBuffer.order(java.nio.ByteOrder.nativeOrder())
-        inputBuffer.asFloatBuffer().put(nhwcArray)
+        // ── 构建输入 buffer ──
+        val inputBuffer: ByteBuffer
+        val isInputQuantized = inputDataType != DataType.FLOAT32
+        if (isInputQuantized) {
+            // float [0,1] → quantized uint8/int8
+            val elemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else 2
+            inputBuffer = ByteBuffer.allocateDirect(nhwcArray.size * elemBytes)
+            inputBuffer.order(ByteOrder.nativeOrder())
+            for (v in nhwcArray) {
+                val q = (v / inputScale + inputZeroPoint + 0.5f).toInt()
+                inputBuffer.put(q.toByte())
+            }
+        } else {
+            inputBuffer = ByteBuffer.allocateDirect(nhwcArray.size * 4)
+            inputBuffer.order(ByteOrder.nativeOrder())
+            inputBuffer.asFloatBuffer().put(nhwcArray)
+        }
         inputBuffer.rewind()
 
-        val outputBuffer = java.nio.ByteBuffer.allocateDirect(outputSize * 4)
-        outputBuffer.order(java.nio.ByteOrder.nativeOrder())
+        // ── 构建输出 buffer ──
+        val isOutputQuantized = outputDataType != DataType.FLOAT32
+        val outElemBytes = if (isOutputQuantized) {
+            if (outputDataType == DataType.INT8 || outputDataType == DataType.UINT8) 1 else 2
+        } else 4
+        val outputBuffer = ByteBuffer.allocateDirect(outputSize * outElemBytes)
+        outputBuffer.order(ByteOrder.nativeOrder())
 
         val outputs = java.util.HashMap<Int, Any>()
         outputs[0] = outputBuffer
         interp.runForMultipleInputsOutputs(arrayOf<Any>(inputBuffer), outputs)
 
+        // ── 读取输出 ──
         outputBuffer.rewind()
         val outArray = FloatArray(outputSize)
-        outputBuffer.asFloatBuffer().get(outArray)
+        if (isOutputQuantized) {
+            for (i in 0 until outputSize) {
+                val q = outputBuffer.get().toInt() and 0xFF // unsigned byte
+                outArray[i] = (q - outputZeroPoint).toFloat() * outputScale
+            }
+        } else {
+            outputBuffer.asFloatBuffer().get(outArray)
+        }
         return outArray
     }
 
@@ -149,8 +191,18 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
 
     private fun readShapes() {
         val interp = interpreter ?: return
-        val inputShape = interp.getInputTensor(0).shape()
-        val outputShape = interp.getOutputTensor(0).shape()
+        val inTensor = interp.getInputTensor(0)
+        val outTensor = interp.getOutputTensor(0)
+        val inputShape = inTensor.shape()
+        val outputShape = outTensor.shape()
+
+        // 读取量化参数
+        inputDataType = inTensor.dataType()
+        outputDataType = outTensor.dataType()
+        inputScale = inTensor.quantizationParams().scale
+        inputZeroPoint = inTensor.quantizationParams().zeroPoint
+        outputScale = outTensor.quantizationParams().scale
+        outputZeroPoint = outTensor.quantizationParams().zeroPoint
 
         if (inputShape.size >= 4) {
             when {

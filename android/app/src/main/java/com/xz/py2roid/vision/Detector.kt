@@ -82,11 +82,19 @@ class Detector(
 
         // TFLite 走独立引擎
         val isTfliteModel = modelPath.endsWith(".tflite", ignoreCase = true)
-        if (backend == InferenceBackend.TFLITE || backend == InferenceBackend.TFLITE_GPU || backend == InferenceBackend.TFLITE_NNAPI ||
-            (backend == InferenceBackend.Auto && isTfliteModel)) {
-            Logger.d("[Route] trying TFLite engine backend=$backend ...")
+        if (isTfliteModel && (backend == InferenceBackend.TFLITE || backend == InferenceBackend.TFLITE_GPU ||
+                backend == InferenceBackend.TFLITE_NNAPI || backend == InferenceBackend.Auto ||
+                backend == InferenceBackend.NNAPI || backend == InferenceBackend.XNNPACK ||
+                backend == InferenceBackend.CPU)) {
+            // ONNX Runtime 后端选 .tflite 模型时，映射到对应的 TFLite 后端
+            val tfliteBackend = when (backend) {
+                InferenceBackend.NNAPI -> InferenceBackend.TFLITE_NNAPI
+                InferenceBackend.Auto -> InferenceBackend.TFLITE
+                else -> backend // TFLITE/TFLITE_GPU/TFLITE_NNAPI/CPU/XNNPACK 都走 TFLite CPU
+            }
+            Logger.d("[Route] trying TFLite engine backend=$backend tfliteBackend=$tfliteBackend ...")
             val tflite = TfliteEngine(context)
-            tflite.loadModel(modelPath, backend)
+            tflite.loadModel(modelPath, tfliteBackend)
             engine = tflite
             Logger.i("[Route] TFLite engine OK provider=${tflite.provider}")
             return

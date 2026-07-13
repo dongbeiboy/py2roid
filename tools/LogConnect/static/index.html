@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>py2roid 远程日志</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="f-bar">
+  <input id="filter" type="text" placeholder="过滤 (空格分隔 AND)..." oninput="render()">
+  <label><input type="checkbox" id="autoScroll" checked> 自动滚动</label>
+  <label><input type="checkbox" id="showTime" checked> 时间</label>
+  <span id="count">0</span>
+  <span id="usage"></span>
+  <span id="hud"></span>
+  <span id="status">○ 等待连接...</span>
+</div>
+<div id="log"></div>
+<script src="app.js"></script>
+</body>
+</html>
