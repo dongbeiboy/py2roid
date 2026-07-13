@@ -2,6 +2,7 @@ package com.xz.py2roid.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.xz.py2roid.ui.AppMode
 import com.xz.py2roid.ui.AppSettings
 import com.xz.py2roid.ui.CommMode
 import com.xz.py2roid.ui.InferenceBackend
@@ -16,7 +17,8 @@ class SettingsStore(context: Context) {
             commMode = CommMode.valueOf(prefs.getString("commMode", CommMode.USB.name) ?: CommMode.USB.name),
             inferenceBackend = InferenceBackend.valueOf(prefs.getString("backend", InferenceBackend.Auto.name) ?: InferenceBackend.Auto.name),
             debugOverlayEnabled = prefs.getBoolean("debugOverlay", false),
-            startOnConfig = prefs.getBoolean("startOnConfig", true)
+            startOnConfig = prefs.getBoolean("startOnConfig", true),
+            appMode = AppMode.valueOf(prefs.getString("appMode", AppMode.LEGACY.name) ?: AppMode.LEGACY.name)
         )
     }
 
@@ -28,6 +30,7 @@ class SettingsStore(context: Context) {
             putString("backend", settings.inferenceBackend.name)
             putBoolean("debugOverlay", settings.debugOverlayEnabled)
             putBoolean("startOnConfig", settings.startOnConfig)
+            putString("appMode", settings.appMode.name)
             apply()
         }
     }

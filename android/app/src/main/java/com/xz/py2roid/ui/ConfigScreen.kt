@@ -1,11 +1,35 @@
 package com.xz.py2roid.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -16,7 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConfigScreen(
     models: List<ModelItem>,
@@ -25,6 +49,7 @@ fun ConfigScreen(
     enabledBackends: Set<InferenceBackend>,
     onModelSelected: (String) -> Unit,
     onBackendChange: (InferenceBackend) -> Unit,
+    onAppModeChange: (AppMode) -> Unit = {},
     onStartOnConfigChange: (Boolean) -> Unit,
     onStart: () -> Unit,
     onOpenSettings: () -> Unit
@@ -64,48 +89,62 @@ fun ConfigScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 模型选择
-            Text("模型", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                models.forEach { model ->
-                    val isSelected = model.name == selectedModel
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onModelSelected(model.name) },
-                        color = if (isSelected) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color(0xFF2A2A2A),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+            // 运行模式
+            Text("运行模式", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Surface(
+                color = Color(0xFF2A2A2A),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        AppMode.entries.forEachIndexed { i, m ->
+                            SegmentedButton(
+                                selected = settings.appMode == m,
+                                onClick = { onAppModeChange(m) },
+                                shape = SegmentedButtonDefaults.itemShape(i, AppMode.entries.size),
+                                colors = SegmentedButtonDefaults.colors(
+                                    activeContainerColor = MaterialTheme.colorScheme.primary,
+                                    inactiveContainerColor = Color(0xFF3A3A3A)
+                                )
+                            ) { Text(m.label, fontSize = 12.sp) }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (settings.appMode == AppMode.LEGACY) "Kotlin YOLO 检测管线" else "运行 MicroPython 兼容脚本",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                }
+            }
+
+            if (settings.appMode == AppMode.LEGACY) {
+                // 模型选择
+                Text("模型", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    models.forEach { model ->
+                        val isSelected = model.name == selectedModel
+                        Surface(
+                            modifier = Modifier.clickable { onModelSelected(model.name) },
+                            color = if (isSelected) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color(0xFF2A2A2A),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = model.name,
+                                text = model.name.removeSuffix(".onnx").removeSuffix(".tflite"),
                                 color = if (isSelected) Color(0xFF4CAF50) else Color.White,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                text = model.inputSize,
-                                color = Color.Gray,
-                                fontSize = 11.sp
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
                     }
                 }
+
+                Spacer(Modifier.height(4.dp))
             }
-
-            Spacer(Modifier.height(4.dp))
-
-            // 推理后端
-            Text("推理后端", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-
-            InferenceBackendGrid(
-                selectedBackend = settings.inferenceBackend,
-                enabledBackends = modelBackends,
-                onBackendChange = onBackendChange
-            )
 
             Spacer(Modifier.height(16.dp))
 
@@ -135,7 +174,10 @@ fun ConfigScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                 shape = MaterialTheme.shapes.small
             ) {
-                Text("开始检测", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    if (settings.appMode == AppMode.OPENMV) "开始脚本模式" else "开始检测",
+                    fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White
+                )
             }
         }
     }

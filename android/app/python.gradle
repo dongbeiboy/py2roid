@@ -6,5 +6,8 @@ python {
     pip {
         install "numpy"
         install "Pillow"
+        install "scipy"
+        install "pyzbar"
+        install "dt_apriltags"
     }
 }

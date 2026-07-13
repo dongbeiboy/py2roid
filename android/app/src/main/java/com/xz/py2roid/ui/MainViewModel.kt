@@ -3,11 +3,15 @@ package com.xz.py2roid.ui
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xz.py2roid.bridge.ScriptRunner
 import com.xz.py2roid.util.Logger
 import com.xz.py2roid.vision.TfliteEngine
 import com.xz.py2roid.vision.VcapEngine
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -84,6 +88,68 @@ class MainViewModel : ViewModel() {
     val startRequested: StateFlow<Boolean> = _startRequested.asStateFlow()
 
     fun requestStart() { _startRequested.value = true }
+
+    // ── 模式选择 ──
+    fun updateAppMode(mode: AppMode) {
+        _settings.value = _settings.value.copy(appMode = mode)
+    }
+
+    /** 从磁盘加载的完整设置覆盖 StateFlow */
+    fun applySavedSettings(saved: AppSettings) {
+        _settings.value = saved
+        _selectedModel.value = "" // 不覆盖模型选择，由 LaunchedEffect 管理
+    }
+
+    // ── 脚本状态 ──
+    private val _scriptState = MutableStateFlow(ScriptRunner.ScriptState.IDLE)
+    val scriptState: StateFlow<ScriptRunner.ScriptState> = _scriptState.asStateFlow()
+
+    private val _scriptOutput = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 128)
+    val scriptOutput: SharedFlow<String> = _scriptOutput.asSharedFlow()
+
+    private val _availableScripts = MutableStateFlow<List<ScriptFile>>(emptyList())
+    val availableScripts: StateFlow<List<ScriptFile>> = _availableScripts.asStateFlow()
+
+    private val _selectedScript = MutableStateFlow<ScriptFile?>(null)
+    val selectedScript: StateFlow<ScriptFile?> = _selectedScript.asStateFlow()
+
+    private val _showScriptPicker = MutableStateFlow(false)
+    val showScriptPicker: StateFlow<Boolean> = _showScriptPicker.asStateFlow()
+
+    fun showScriptPicker() { _showScriptPicker.value = true }
+    fun hideScriptPicker() { _showScriptPicker.value = false }
+    fun selectScript(script: ScriptFile) { _selectedScript.value = script }
+
+    fun setScripts(scripts: List<ScriptFile>) {
+        _availableScripts.value = scripts
+    }
+
+    fun setScriptState(state: ScriptRunner.ScriptState) {
+        _scriptState.value = state
+    }
+
+    fun emitScriptOutput(line: String) {
+        _scriptOutput.tryEmit(line)
+        addLogLine("[SCRIPT] $line")
+    }
+
+    // ── 脚本输出日志（与 logLines 共享）──
+    private val _scriptLogLines = MutableStateFlow<List<String>>(emptyList())
+    val scriptLogLines: StateFlow<List<String>> = _scriptLogLines.asStateFlow()
+
+    fun addScriptOutput(line: String) {
+        val current = _scriptLogLines.value
+        val updated = if (current.size >= 200) {
+            current.drop(current.size - 200 + 1) + line
+        } else {
+            current + line
+        }
+        _scriptLogLines.value = updated
+    }
+
+    fun clearScriptOutput() {
+        _scriptLogLines.value = emptyList()
+    }
 
     // Navigation
     fun navigateToConfig() { _screen.value = AppScreen.Config }

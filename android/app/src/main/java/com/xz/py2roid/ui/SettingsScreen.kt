@@ -44,8 +44,11 @@ data class AppSettings(
     val commMode: CommMode = CommMode.USB,
     val inferenceBackend: InferenceBackend = InferenceBackend.Auto,
     val debugOverlayEnabled: Boolean = false,
-    val startOnConfig: Boolean = true
+    val startOnConfig: Boolean = true,
+    val appMode: AppMode = AppMode.LEGACY
 )
+
+enum class AppMode(val label: String) { LEGACY("原始模式"), OPENMV("OpenMV 模式") }
 
 enum class CommMode(val label: String) { USB("USB"), WiFi("WiFi"), Off("关闭") }
 enum class InferenceBackend(val label: String) {
@@ -79,6 +82,7 @@ fun SettingsScreen(
     onCommModeChange: (CommMode) -> Unit,
     onBackendChange: (InferenceBackend) -> Unit,
     onDebugOverlayChange: (Boolean) -> Unit,
+    onAppModeChange: (AppMode) -> Unit = {},
     onBack: () -> Unit,
     onGoConfig: () -> Unit = {}
 ) {
@@ -138,6 +142,30 @@ fun SettingsScreen(
                     selectedBackend = settings.inferenceBackend,
                     enabledBackends = enabledBackends,
                     onBackendChange = onBackendChange
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            SectionHeader("运行模式")
+            SettingsCard {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    AppMode.entries.forEachIndexed { i, m ->
+                        SegmentedButton(
+                            selected = settings.appMode == m,
+                            onClick = { onAppModeChange(m) },
+                            shape = SegmentedButtonDefaults.itemShape(i, AppMode.entries.size),
+                            colors = SegmentedButtonDefaults.colors(
+                                activeContainerColor = MaterialTheme.colorScheme.primary,
+                                inactiveContainerColor = Color(0xFF2A2A2A)
+                            )
+                        ) { Text(m.label, fontSize = 13.sp) }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (settings.appMode == AppMode.LEGACY) "Kotlin YOLO 检测管线" else "运行 MicroPython 兼容脚本",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.5f)
                 )
             }
 
