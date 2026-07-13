@@ -100,7 +100,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
 
             interpreter = Interpreter(buffer, options)
             readShapes()
-            Logger.i(\"Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight} output=$outputSize outType=$outputDataType outScale=$outputScale outZp=$outputZeroPoint\")
+            Logger.i("Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight} output=$outputSize outType=$outputDataType outScale=$outputScale outZp=$outputZeroPoint")
         } catch (e: Exception) {
             val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
             // GPU delegate 失败时回退 CPU
@@ -135,7 +135,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         if (isInputQuantized) {
             val elemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else 2
             val bufSize = nhwcArray.size * elemBytes
-            Logger.i(\"[Debug] quant input: type=$inputDataType elemBytes=$elemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint\")
+            Logger.i("[Debug] quant input: type=$inputDataType elemBytes=$elemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
             inputBuffer = ByteBuffer.allocateDirect(bufSize)
             inputBuffer.order(ByteOrder.nativeOrder())
             for (v in nhwcArray) {
