@@ -89,9 +89,12 @@ class MainActivity : ComponentActivity() {
 
         // 解压内置模型
         lifecycleScope.launch(Dispatchers.IO) {
-            modelManager.initModels()
-            Logger.d("Models initialized")
+            val models = modelManager.initModels()
+            Logger.d("Models initialized: ${models.size} models")
             withContext(Dispatchers.Main) {
+                viewModel.updateModels(models.map {
+                    com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize)
+                })
                 viewModel.onModelsReady()
             }
         }
