@@ -49,6 +49,9 @@ venv/
 *.npy
 android/app/src/main/assets/models/*_tflite/
 
+# ---- 新手包 / 临时实验文件 ----
+noob/
+
 # ---- 文档 ----
 docs/
 
@@ -91,3 +94,4 @@ screen.png
 
 # ---- vivo 开放平台工具 ----
 .vivo/
+android/app/src/main/assets/models/last.onnx

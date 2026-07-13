@@ -35,7 +35,7 @@ class SettingsStore(context: Context) {
         }
     }
 
-    fun getSelectedModel(): String = prefs.getString("selectedModel", "yolov8n.onnx") ?: "yolov8n.onnx"
+    fun getSelectedModel(): String = prefs.getString("selectedModel", "last.onnx") ?: "last.onnx"
     fun setSelectedModel(name: String) { prefs.edit().putString("selectedModel", name).apply() }
 
     fun isFirstLaunch(): Boolean = prefs.getBoolean("first_launch", true)

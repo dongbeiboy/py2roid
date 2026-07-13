@@ -124,7 +124,9 @@ class Detector(
                 return emptyList()
             }
 
-            val numProposals = if (totalElements == 705600) 8400 else totalElements / 85
+            // 动态推断输出结构：YOLOv8 输出为 (1, 4+numClasses, numProposals)
+            // 标准 640x640 输入下 numProposals = 8400（80 类时 84*8400=705600，2 类时 6*8400=50400）
+            val numProposals = if (totalElements % 8400 == 0) 8400 else totalElements / 85
             val numFeatures = totalElements / numProposals
             val numClasses = numFeatures - 4
 
@@ -208,7 +210,12 @@ class Detector(
                 val x2 = ((cxOrig + wOrig / 2f) / origW).coerceIn(0f, 1f)
                 val y2 = ((cyOrig + hOrig / 2f) / origH).coerceIn(0f, 1f)
 
-                val label = if (maxClassId in COCO_CLASSES.indices) COCO_CLASSES[maxClassId] else "class_$maxClassId"
+                // 优先使用模型元数据中的类别名（如 miku/teto），否则回退 COCO 或 class_N
+                val label = when {
+                    eng.classNames.containsKey(maxClassId) -> eng.classNames[maxClassId]!!
+                    numClasses == 80 && maxClassId in COCO_CLASSES.indices -> COCO_CLASSES[maxClassId]
+                    else -> "class_$maxClassId"
+                }
                 val frameAspect = origW / origH
                 rawDetections.add(DetectionResult(label, maxClassId, maxProb, x1, y1, x2, y2, frameAspect = frameAspect))
             }

@@ -55,6 +55,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
     override val provider get() = _provider
     override val inputWidth get() = _inputWidth
     override val inputHeight get() = _inputHeight
+    override val classNames: Map<Int, String> get() = emptyMap()
 
     /**
      * 加载 .vaim 模型。
