@@ -101,8 +101,8 @@ jobs:
       - name: Generate Changelog
         id: changelog
         run: |
-          # 获取上一个 tag
-          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1 || echo "")
+          # 获取上一个 tag（排除当前触发 tag，避免 v1.0.15..HEAD 为空范围）
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -1 || echo "")
           if [ -z "$PREV_TAG" ]; then
             RANGE="HEAD"
           else
