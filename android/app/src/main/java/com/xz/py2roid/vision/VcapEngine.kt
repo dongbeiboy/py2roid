@@ -1,7 +1,7 @@
 package com.xz.py2roid.vision
 
 import android.content.Context
-import android.util.Log
+import com.xz.py2roid.util.Logger
 import com.vivo.vcap.VcapInstance
 import java.io.FileInputStream
 import java.nio.MappedByteBuffer
@@ -96,7 +96,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
                     _inputWidth = inputShape[3]
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "[Shape] input: ${e::class.simpleName}: ${e.message} (defaults ${_inputWidth}x${_inputHeight})")
+                Logger.w("[Shape] input: ${e::class.simpleName}: ${e.message} (defaults ${_inputWidth}x${_inputHeight})")
             }
 
             try {
@@ -105,7 +105,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
                     _outputSize = outputShape.fold(1) { acc, v -> acc * v }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "[Shape] output: ${e::class.simpleName}: ${e.message}")
+                Logger.w("[Shape] output: ${e::class.simpleName}: ${e.message}")
             }
 
             _provider = when (runtimeId) {
@@ -114,10 +114,10 @@ class VcapEngine(private val context: Context) : InferenceEngine {
                 else -> "VCAP"
             }
 
-            Log.i(TAG, "Model loaded: $modelPath runtime=$_provider input=${_inputWidth}x${_inputHeight} outputSize=$_outputSize")
+            Logger.i("Model loaded: $modelPath runtime=$_provider input=${_inputWidth}x${_inputHeight} outputSize=$_outputSize")
         } catch (e: Exception) {
             val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
-            Log.e(TAG, "[LoadModel] ${e::class.simpleName}: ${e.message} fileSize=${fileSize}B runtime=$runtimeId model=$modelPath")
+            Logger.e("[LoadModel] ${e::class.simpleName}: ${e.message} fileSize=${fileSize}B runtime=$runtimeId model=$modelPath")
             throw e
         }
     }
@@ -139,7 +139,7 @@ class VcapEngine(private val context: Context) : InferenceEngine {
         try {
             vcapNet?.release()
         } catch (e: Exception) {
-            Log.w(TAG, "[Release] ${e::class.simpleName}: ${e.message}")
+            Logger.w("[Release] ${e::class.simpleName}: ${e.message}")
         }
         vcapNet = null
     }

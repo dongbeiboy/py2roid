@@ -1,7 +1,7 @@
 package com.xz.py2roid.vision
 
 import android.content.Context
-import android.util.Log
+import com.xz.py2roid.util.Logger
 import com.xz.py2roid.ui.InferenceBackend
 
 class Detector(
@@ -64,38 +64,43 @@ class Detector(
 
         // 打印模型文件信息便于调试
         val modelFile = java.io.File(modelPath)
-        Log.i(TAG, "[Load] backend=$backend model=${modelFile.name} size=${if (modelFile.exists()) modelFile.length() else -1}B exists=${modelFile.exists()}")
+        Logger.i("[Route] backend=$backend model=${modelFile.name} size=${if (modelFile.exists()) modelFile.length() else -1}B")
 
         // VCAP 走独立引擎
         if (backend == InferenceBackend.VCAP) {
+            Logger.d("[Route] trying VCAP engine ...")
             try {
                 val vcap = VcapEngine(context)
                 vcap.loadModel(modelPath)
                 engine = vcap
-                Log.i(TAG, "VCAP engine loaded: $modelPath provider=${vcap.provider}")
+                Logger.i("[Route] VCAP engine OK provider=${vcap.provider}")
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "VCAP unavailable, falling back to ONNX Runtime", e)
+                Logger.w("[Route] VCAP unavailable -> fallback ONNX")
             }
         }
 
-        // TFLite 走独立引擎（含 TFLite CPU / GPU / NNAPI）
-        // Auto 时若模型是 .tflite 也路由到 TFLite 引擎
+        // TFLite 走独立引擎
         val isTfliteModel = modelPath.endsWith(".tflite", ignoreCase = true)
         if (backend == InferenceBackend.TFLITE || backend == InferenceBackend.TFLITE_GPU || backend == InferenceBackend.TFLITE_NNAPI ||
             (backend == InferenceBackend.Auto && isTfliteModel)) {
+            Logger.d("[Route] trying TFLite engine backend=$backend ...")
             val tflite = TfliteEngine(context)
             tflite.loadModel(modelPath, backend)
             engine = tflite
-            Log.i(TAG, "TFLite engine loaded: $modelPath provider=${tflite.provider}")
+            Logger.i("[Route] TFLite engine OK provider=${tflite.provider}")
             return
         }
 
-        // ONNX Runtime 路径（含 Auto/CPU/XNNPACK/NNAPI）
+        // ONNX Runtime 路径
+        val isVcapResolved = backend == InferenceBackend.Auto &&
+            DeviceProfile.getRecommendedBackend(context) == InferenceBackend.VCAP
+        val onnxBackend = if (isVcapResolved) InferenceBackend.NNAPI else backend
+        Logger.d("[Route] trying ONNX Runtime backend=$backend onnxBackend=$onnxBackend isVcapResolved=$isVcapResolved")
         val onnx = OnnxEngine(context)
-        val onnxBackend = if (backend == InferenceBackend.VCAP) InferenceBackend.Auto else backend
         onnx.loadModel(modelPath, onnxBackend)
         engine = onnx
+        Logger.i("[Route] ONNX Runtime OK provider=${onnx.provider}")
     }
 
     /** NMS 前最多保留的候选框数，防止高阈值场景 O(n²) 爆炸 */
@@ -106,7 +111,7 @@ class Detector(
         val inputTensor = result.tensor
         // NNAPI 垃圾输出自动回退到 CPU
         if (nnapiGarbageDetected && currentProvider == "NNAPI") {
-            Log.w(TAG, "[Fallback] NNAPI garbage detected, reloading with CPU")
+            Logger.w("[Fallback] *** NNAPI garbage detected, reloading with CPU ***")
             currentModelPath?.let { loadModel(it, InferenceBackend.CPU) }
             nnapiGarbageDetected = false
         }
@@ -120,7 +125,7 @@ class Detector(
             // 输出解析
             val totalElements = outputArray.size
             if (totalElements < 84) {
-                Log.w(TAG, "[D08] Output too small ($totalElements), skipping frame")
+                Logger.w("[D08] Output too small ($totalElements), skipping frame")
                 return emptyList()
             }
 
@@ -149,7 +154,7 @@ class Detector(
             }
 
             if (isDiagFrame) {
-                Log.d(TAG, "[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses output=$totalElements")
+                Logger.d("[D07] Proposals=$numProposals features=$numFeatures classes=$numClasses output=$totalElements")
                 val sampleStr = (0 until 10.coerceAtMost(numProposals)).joinToString { i ->
                     val cx = outputArray[i]
                     val cy = outputArray[1 * numProposals + i]
@@ -161,13 +166,13 @@ class Detector(
                     val pLast = outputArray[(4 + lastClassIdx) * numProposals + i]
                     "(${"%.2f".format(cx)},${"%.2f".format(cy)}|${"%.0f".format(w)}x${"%.0f".format(h)}|p0=${"%.4f".format(p0)},pLast=${"%.4f".format(pLast)})"
                 }
-                Log.d(TAG, "[Sample] first 10: $sampleStr")
-                Log.d(TAG, "[Dist] sampled=${numProposals / diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")
+                Logger.d("[Sample] first 10: $sampleStr")
+                Logger.d("[Dist] sampled=${numProposals / diagStep} maxConf=${"%.4f".format(diagMaxConf)} >0.1=$diagHighCount")
             }
 
             // NNAPI 垃圾输出检测
             if (diagMaxConf < 0.01f && currentProvider == "NNAPI" && !nnapiGarbageDetected) {
-                Log.w(TAG, "[Fallback] NNAPI output all-zero, scheduling CPU fallback")
+                Logger.w("[Fallback] *** NNAPI output all-zero (diagMaxConf=$diagMaxConf), scheduling CPU fallback ***")
                 nnapiGarbageDetected = true
                 onPerformanceUpdate(0f, "NNAPI(garbage)", System.currentTimeMillis() - startTime)
                 return emptyList()
@@ -235,7 +240,7 @@ class Detector(
 
             if (finalDetections.isNotEmpty()) {
                 val classes = finalDetections.groupBy { it.label }.mapValues { it.value.size }
-                Log.i(TAG, "[Result] final=${finalDetections.size} before_nms=${candidates.size} raw=${rawDetections.size} classes=$classes")
+                Logger.i("[Result] final=${finalDetections.size} before_nms=${candidates.size} raw=${rawDetections.size} classes=$classes")
             }
 
             onDetectionResult(finalDetections)
@@ -243,14 +248,7 @@ class Detector(
             return finalDetections
         } catch (e: Exception) {
             val eng = engine
-            Log.e(TAG, "[D05] ${e::class.simpleName}: ${e.message} provider=$currentProvider engine=${eng?.name ?: "null"} input=${eng?.inputWidth}x${eng?.inputHeight}")
-            if (Log.isLoggable(TAG, Log.DEBUG)) {
-                val sw = java.io.StringWriter()
-                val pw = java.io.PrintWriter(sw)
-                e.printStackTrace(pw)
-                val trace = sw.toString().split("\n").take(4).joinToString(" | ")
-                Log.d(TAG, "[D05] stack(top4): $trace")
-            }
+            Logger.e("[D05] ${e::class.simpleName}: ${e.message} provider=$currentProvider engine=${eng?.name ?: "null"} input=${eng?.inputWidth}x${eng?.inputHeight}")
             onPerformanceUpdate(0f, currentProvider, System.currentTimeMillis() - startTime)
             throw e
         }
@@ -266,7 +264,7 @@ class Detector(
         try {
             engine?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Error closing engine", e)
+            Logger.w("Error closing engine")
         }
         engine = null
     }

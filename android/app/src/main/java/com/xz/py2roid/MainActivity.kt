@@ -28,6 +28,7 @@ import com.xz.py2roid.ui.InferenceBackend
 import com.xz.py2roid.ui.MainScreen
 import com.xz.py2roid.ui.MainViewModel
 import com.xz.py2roid.ui.Py2roidTheme
+import com.xz.py2roid.util.LogPusher
 import com.xz.py2roid.util.Logger
 import com.xz.py2roid.util.OriginOsHelper
 import com.xz.py2roid.util.PermissionHelper
@@ -57,9 +58,11 @@ class MainActivity : ComponentActivity() {
     // [DEBUG] ADB intent extra 覆写（仅 debug 包有效）
     private var adbModelOverride: String? = null
     private var adbBackendOverride: InferenceBackend? = null
+    private var adbLogWeb: String? = null
 
     /** ADB 传参时跳过配置页直接检测 */
     private val adbActive get() = adbModelOverride != null || adbBackendOverride != null
+    private val logWebActive get() = adbLogWeb != null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,7 +76,8 @@ class MainActivity : ComponentActivity() {
 
         // [DEBUG] ADB intent extra 覆写（仅 debug 包有效，存字段不走 prefs 避免 LaunchedEffect 覆盖）
         // adb shell am start -n com.xz.py2roid/.MainActivity \
-        //   --es model yolov8n.tflite --es backend TFLITE
+        //   --es model yolov8n.tflite --es backend TFLITE \
+        //   --es log_web http://192.168.1.100:8765
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             intent?.extras?.let { extras ->
                 extras.getString("model")?.let {
@@ -88,7 +92,16 @@ class MainActivity : ComponentActivity() {
                         Logger.w("[ADB] unknown backend: $it")
                     }
                 }
+                extras.getString("log_web")?.let {
+                    adbLogWeb = it
+                    Logger.i("[ADB] log push -> $it")
+                }
             }
+        }
+
+        // [DEBUG] LogPusher: 将日志推送到指定 web 地址（仅 debug 包）
+        if (logWebActive) {
+            LogPusher.start(adbLogWeb!!, lifecycleScope, debuggable = true)
         }
 
         // 解压内置模型

@@ -1,7 +1,7 @@
 package com.xz.py2roid.vision
 
 import android.content.Context
-import android.util.Log
+import com.xz.py2roid.util.Logger
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtException
@@ -36,30 +36,39 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
         close()
         try {
             ortEnv = OrtEnvironment.getEnvironment()
-            val resolvedBackend = if (backend == InferenceBackend.Auto) {
-                DeviceProfile.getRecommendedBackend(context)
-            } else backend
+            Logger.d("[Load] backend=$backend model=$modelPath")
 
+            val resolvedBackend = if (backend == InferenceBackend.Auto) {
+                val rec = DeviceProfile.getRecommendedBackend(context)
+                Logger.d("[Load] Auto resolved -> $rec")
+                rec
+            } else {
+                backend.also { Logger.d("[Load] explicit backend=$it") }
+            }
+
+            Logger.d("[Load] creating SessionOptions backend=$resolvedBackend")
             val opts = createSessionOptions(resolvedBackend)
+            Logger.d("[Load] SessionOptions created, provider pre-session=$_provider")
+
+            Logger.d("[Load] calling createSession ...")
             session = try {
-                ortEnv!!.createSession(modelPath, opts)
+                ortEnv!!.createSession(modelPath, opts).also {
+                    Logger.i("[Load] createSession OK provider=$_provider")
+                }
             } catch (e: Exception) {
-                if (resolvedBackend != InferenceBackend.CPU) {
-                    Log.w(TAG, "[CreateSession] ${e::class.simpleName}: ${e.message} backend=$resolvedBackend -> fallback CPU")
-                    _provider = "CPU"
-                    ortEnv!!.createSession(modelPath, OrtSession.SessionOptions().apply {
-                        setIntraOpNumThreads(4)
-                    })
-                } else {
-                    Log.e(TAG, "[CreateSession] ${e::class.simpleName}: ${e.message} backend=CPU (no fallback)")
-                    throw e
+                Logger.w("[CreateSession] ${e::class.simpleName}: ${e.message} backend=$resolvedBackend -> fallback CPU")
+                _provider = "CPU"
+                ortEnv!!.createSession(modelPath, OrtSession.SessionOptions().apply {
+                    setIntraOpNumThreads(4)
+                }).also {
+                    Logger.i("[Load] createSession (CPU fallback) OK")
                 }
             }
             readModelMetadata()
-            Log.i(TAG, "Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight}")
+            Logger.i("[Load] Done: provider=$_provider input=${_inputWidth}x${_inputHeight}")
         } catch (e: Exception) {
             val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
-            Log.e(TAG, "[LoadModel] ${e::class.simpleName}: ${e.message} backend=$_provider fileSize=${fileSize}B model=$modelPath")
+            Logger.e("[LoadModel] ${e::class.simpleName}: ${e.message} provider=$_provider fileSize=${fileSize}B model=$modelPath")
             throw e
         }
     }
@@ -98,29 +107,39 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                 InferenceBackend.CPU -> {
                     setIntraOpNumThreads(4)
                     _provider = "CPU"
+                    Logger.d("[SessionOpt] CPU, 4 threads")
                 }
                 InferenceBackend.XNNPACK -> {
                     setIntraOpNumThreads(4)
                     try {
                         addXnnpack(emptyMap())
                         _provider = "XNNPACK"
+                        Logger.i("[SessionOpt] XNNPACK OK")
                     } catch (e: Exception) {
                         _provider = "CPU"
-                        Log.w(TAG, "[XNNPACK] ${e::class.simpleName}: ${e.message} -> fallback CPU")
+                        Logger.w("[SessionOpt] XNNPACK ${e::class.simpleName}: ${e.message} -> CPU")
                     }
                 }
                 InferenceBackend.NNAPI -> {
-                    addNnapi()
-                    _provider = "NNAPI"
+                    try {
+                        addNnapi()
+                        _provider = "NNAPI"
+                        Logger.i("[SessionOpt] NNAPI OK")
+                    } catch (e: Exception) {
+                        setIntraOpNumThreads(4)
+                        _provider = "CPU"
+                        Logger.w("[SessionOpt] NNAPI ${e::class.simpleName}: ${e.message} -> CPU")
+                    }
                 }
                 InferenceBackend.VCAP, InferenceBackend.Auto -> {
                     try {
                         addNnapi()
                         _provider = "NNAPI"
+                        Logger.i("[SessionOpt] VCAP/Auto -> NNAPI OK")
                     } catch (e: Exception) {
                         setIntraOpNumThreads(4)
                         _provider = "CPU"
-                        Log.w(TAG, "[NNAPI/Auto] ${e::class.simpleName}: ${e.message} -> fallback CPU")
+                        Logger.w("[SessionOpt] VCAP/Auto -> NNAPI ${e::class.simpleName}: ${e.message} -> CPU")
                     }
                 }
                 InferenceBackend.TFLITE, InferenceBackend.TFLITE_GPU, InferenceBackend.TFLITE_NNAPI -> {
@@ -155,10 +174,10 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                         _classNames[id] = name
                     }
                 }
-                Log.i(TAG, "Read class names from model: $_classNames")
+                Logger.i("Read class names from model: $_classNames")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not read model metadata", e)
+            Logger.w("Could not read model metadata (${e.message})")
         }
     }
 }

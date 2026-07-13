@@ -1,7 +1,7 @@
 package com.xz.py2roid.vision
 
 import android.content.Context
-import android.util.Log
+import com.xz.py2roid.util.Logger
 import com.xz.py2roid.ui.InferenceBackend
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
@@ -60,7 +60,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             when (backend) {
                 InferenceBackend.TFLITE_GPU -> {
                     if (!isGpuAvailable()) {
-                        Log.w(TAG, "GPU not available, fallback CPU")
+                        Logger.w("GPU not available, fallback CPU")
                         _provider = "TFLite"
                     } else {
                         gpuDelegate = GpuDelegate()
@@ -83,17 +83,17 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
 
             interpreter = Interpreter(buffer, options)
             readShapes()
-            Log.i(TAG, "Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight} output=$outputSize")
+            Logger.i("Model loaded: $modelPath provider=$_provider input=${_inputWidth}x${_inputHeight} output=$outputSize")
         } catch (e: Exception) {
             val fileSize = try { java.io.File(modelPath).length() } catch (_: Exception) { -1L }
             // GPU delegate 失败时回退 CPU
             if (backend == InferenceBackend.TFLITE_GPU && gpuDelegate != null) {
-                Log.w(TAG, "GPU delegate failed, fallback CPU", e)
+                Logger.w("GPU delegate failed, fallback CPU")
                 closeDelegate()
                 loadModel(modelPath, InferenceBackend.TFLITE)
                 return
             }
-            Log.e(TAG, "[LoadModel] ${e::class.simpleName}: ${e.message} backend=$backend fileSize=${fileSize}B model=$modelPath")
+            Logger.e("[LoadModel] ${e::class.simpleName}: ${e.message} backend=$backend fileSize=${fileSize}B model=$modelPath")
             throw e
         }
     }
