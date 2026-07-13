@@ -32,6 +32,10 @@ CMD_CONFIG_SET = 0x04  # MCU 设置手机配置 ← MCU
 CMD_CONFIG_GET = 0x05  # MCU 请求手机配置 ← MCU
 CMD_CONFIG_RESP = 0x06  # 手机配置应答 → MCU
 CMD_ERROR = 0xF0  # 错误报告 双向
+CMD_UART_WRITE = 0x20  # UART 写入 → HUB
+CMD_UART_READ = 0x21   # UART 读取请求 → HUB
+CMD_UART_CLOSE = 0x22  # UART 关闭 → HUB
+CMD_UART_RESP = 0x23   # UART 读取响应 ← HUB
 
 CMD_NAMES = {
     CMD_DETECTION_RESULT: "DETECTION_RESULT",
@@ -41,6 +45,10 @@ CMD_NAMES = {
     CMD_CONFIG_GET: "CONFIG_GET",
     CMD_CONFIG_RESP: "CONFIG_RESP",
     CMD_ERROR: "ERROR",
+    CMD_UART_WRITE: "UART_WRITE",
+    CMD_UART_READ: "UART_READ",
+    CMD_UART_CLOSE: "UART_CLOSE",
+    CMD_UART_RESP: "UART_RESP",
 }
 
 # ── 错误码 ─────────────────────────────────────────────
@@ -59,12 +67,14 @@ def checksum(data: bytes) -> int:
     return sum(data) & 0xFF
 
 
-def encode(command: int, payload: bytes = b"") -> bytes:
+def encode(command: int, payload: bytes = b"", target: Optional[int] = None) -> bytes:
     """构造完整帧.
 
     Args:
         command: 命令字 (0x01~0xF0)
         payload: 负载字节串
+        target: HUB 目标端口（None 或 TGT_UNUSED 时不加 Target）
+                非 None 时在 payload 前加 1 字节 Target
 
     Returns:
         完整帧字节串

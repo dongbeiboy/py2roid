@@ -260,3 +260,103 @@ def _bridge_convert_frame(
     except Exception as e:
         log_e(TAG, f"_bridge_convert_frame 失败: {e}")
         return [bytearray(data), src_fmt]
+
+
+# ── OpenMV 模式集成 ──────────────────────────────────
+
+import sys as _sys
+import io as _io
+
+_original_stdout = _sys.stdout
+_script_stdout_buffer = _io.StringIO()
+
+
+class _ScriptStdout:
+    """捕获脚本 print() 输出，用于 UI 控制台显示。"""
+
+    def __init__(self):
+        self._console = _io.StringIO()
+
+    def write(self, text: str) -> None:
+        self._console.write(text)
+        _original_stdout.write(text)
+        # 通过 Kotlin 回调实时推送（可选）
+        if text.strip():
+            log_i("Script", text.rstrip())
+
+    def flush(self) -> None:
+        self._console.flush()
+        _original_stdout.flush()
+
+    def getvalue(self) -> str:
+        return self._console.getvalue()
+
+
+_script_stdout = _ScriptStdout()
+
+
+def _redirect_stdout():
+    """重定向 stdout 到 _ScriptStdout。"""
+    global _original_stdout
+    _original_stdout = _sys.stdout
+    _sys.stdout = _script_stdout
+
+
+def _restore_stdout():
+    """恢复原始 stdout。"""
+    _sys.stdout = _original_stdout
+
+
+def _reset_stop_flag():
+    """复位脚本停止标志。"""
+    from py2roid.openmv._internal import interruptible
+    interruptible._stop_flag = False
+
+
+def _set_stop_flag():
+    """设置脚本停止标志。"""
+    from py2roid.openmv._internal import interruptible
+    interruptible._stop_flag = True
+
+
+def init_openmv():
+    """初始化 OpenMV Python 兼容层（由 ScriptRunner 调用）。"""
+    try:
+        from py2roid.openmv import sensor, Image, ml, time, machine
+        from py2roid.openmv.time import _init as _time_init
+        _time_init()
+        log_i(TAG, "OpenMV 兼容层初始化完成")
+    except Exception as e:
+        log_e(TAG, f"OpenMV 兼容层初始化失败: {e}")
+        raise
+
+
+def _exec_script(content: str, filename: str = "<script>"):
+    """执行 OpenMV 用户脚本。
+
+    Args:
+        content: 脚本源代码
+        filename: 脚本文件名（用于错误栈）
+    """
+    import py2roid.openmv as _openmv
+    from py2roid.openmv._internal import interruptible
+
+    namespace = {
+        "__name__": "__main__",
+        "__file__": filename,
+        "sensor": _openmv.sensor,
+        "Image": _openmv.Image,
+        "ml": _openmv.ml,
+        "time": _openmv.time,
+        "machine": _openmv.machine,
+        "interruptible": interruptible,
+    }
+
+    try:
+        compiled = compile(content, filename, "exec")
+        exec(compiled, namespace)
+    except SystemExit:
+        log_i(TAG, "脚本被用户停止")
+    except Exception as e:
+        log_e(TAG, f"脚本执行错误: {e}")
+        raise
