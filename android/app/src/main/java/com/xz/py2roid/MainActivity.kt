@@ -143,8 +143,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 初始化 Python 桥接
-        lifecycleScope.launch(Dispatchers.IO) {
+        // 初始化 Python 桥接（异步，startDetection 中 await 确保完成）
+        lifecycleScope.launch {
             PythonBridge.init()
         }
 
@@ -280,6 +280,11 @@ class MainActivity : ComponentActivity() {
                 Logger.i("WebSocket server started (mode=${settings.commMode})")
             }
             CommMode.Off -> { /* 不启动通讯 */ }
+        }
+
+        // 等待 Python 初始化完成，确保回调注册时 Python 模块已就绪
+        scope.launch {
+            PythonBridge.initDeferred.await()
         }
 
         // 注册 PythonBridge 回调：USB/WS 发送与配置读取

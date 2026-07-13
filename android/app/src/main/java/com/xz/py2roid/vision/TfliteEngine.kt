@@ -37,6 +37,38 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             }
             return gpuAvailable
         }
+
+        /** IEEE 754 half-precision (16-bit) → float */
+        fun halfToFloat(halfBits: Int): Float {
+            val sign = (halfBits shr 15) and 0x1
+            val exp = (halfBits shr 10) and 0x1F
+            val mant = halfBits and 0x3FF
+            val floatBits = when {
+                exp == 0 -> {
+                    // subnormal: denormalized
+                    if (mant == 0) 0 else {
+                        val corrExp = -14
+                        val corrMant = mant
+                        // normalize mantissa
+                        var normMant = corrMant
+                        var normExp = corrExp
+                        while ((normMant and 0x400) == 0) { normMant = normMant shl 1; normExp-- }
+                        normMant = normMant and 0x3FF // remove leading 1
+                        val floatExp = (normExp + 127)
+                        (sign shl 31) or (floatExp shl 23) or (normMant shl 13)
+                    }
+                }
+                exp == 31 -> {
+                    // inf or nan
+                    if (mant == 0) (sign shl 31) or 0x7F800000 else (sign shl 31) or 0x7FC00000
+                }
+                else -> {
+                    val floatExp = exp - 15 + 127
+                    (sign shl 31) or (floatExp shl 23) or (mant shl 13)
+                }
+            }
+            return java.lang.Float.intBitsToFloat(floatBits)
+        }
     }
 
     private var interpreter: Interpreter? = null
@@ -132,15 +164,24 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         // ── 构建输入 buffer ──
         val inputBuffer: ByteBuffer
         val isInputQuantized = inputDataType != DataType.FLOAT32
+        // 用 elemBytes 判断是否为非标准量化类型（如 FP16）
+        val inputElemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else if (!isInputQuantized) 4 else 2
         if (isInputQuantized) {
-            val elemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else 2
-            val bufSize = nhwcArray.size * elemBytes
-            Logger.i("[Debug] quant input: type=$inputDataType elemBytes=$elemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
+            val bufSize = nhwcArray.size * inputElemBytes
+            Logger.i("[Debug] quant input: type=$inputDataType elemBytes=$inputElemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
             inputBuffer = ByteBuffer.allocateDirect(bufSize)
             inputBuffer.order(ByteOrder.nativeOrder())
-            for (v in nhwcArray) {
-                val q = (v / inputScale + inputZeroPoint + 0.5f).toInt()
-                inputBuffer.put(q.toByte())
+            if (inputElemBytes == 2) {
+                // FP16 或 INT16: 每元素 2 字节，用 putShort 写入
+                for (v in nhwcArray) {
+                    val q = ((v / inputScale + inputZeroPoint).toInt()).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    inputBuffer.putShort(q.toShort())
+                }
+            } else {
+                for (v in nhwcArray) {
+                    val q = (v / inputScale + inputZeroPoint + 0.5f).toInt()
+                    inputBuffer.put(q.toByte())
+                }
             }
         } else {
             val bufSize = nhwcArray.size * 4
@@ -153,9 +194,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
 
         // ── 构建输出 buffer ──
         val isOutputQuantized = outputDataType != DataType.FLOAT32
-        val outElemBytes = if (isOutputQuantized) {
-            if (outputDataType == DataType.INT8 || outputDataType == DataType.UINT8) 1 else 2
-        } else 4
+        val outElemBytes = if (outputDataType == DataType.INT8 || outputDataType == DataType.UINT8) 1 else if (!isOutputQuantized) 4 else 2
         val outBufSize = outputSize * outElemBytes
         Logger.i("[Debug] output: type=$outputDataType elemBytes=$outElemBytes bufSize=$outBufSize scale=$outputScale zp=$outputZeroPoint")
         val outputBuffer = ByteBuffer.allocateDirect(outBufSize)
@@ -168,7 +207,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         // ── 读取输出 ──
         outputBuffer.rewind()
         val outArray = FloatArray(outputSize)
-        if (isOutputQuantized) {
+        if (isOutputQuantized && outElemBytes == 1) {
             var maxVal = 0f
             var sumVal = 0f
             for (i in 0 until outputSize) {
@@ -179,6 +218,14 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
                 sumVal += v
             }
             Logger.i("[Debug] output dequant: max=$maxVal avg=${sumVal / outputSize} first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
+        } else if (isOutputQuantized && outElemBytes == 2) {
+            // FP16/INT16 输出：每 2 字节读取 half/short → 转 float
+            for (i in 0 until outputSize) {
+                val halfBits = outputBuffer.getShort().toInt() and 0xFFFF
+                outArray[i] = halfToFloat(halfBits)
+            }
+            val maxVal = outArray.max()
+            Logger.i("[Debug] output fp16: max=$maxVal first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         } else {
             outputBuffer.asFloatBuffer().get(outArray)
             val maxVal = outArray.max()

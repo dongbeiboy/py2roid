@@ -26,8 +26,9 @@ object PythonBridge {
     @Volatile private var cachedFrame: FrameData? = null
     private var frameSeq = 0L
 
-    /** USB 响应队列（Python bridge 轮询读取）。 */
+    /** USB 响应队列（Python bridge 轮询读取）。上限 1024 防 OOM。 */
     private val usbResponseQueue = ConcurrentLinkedQueue<ByteArray>()
+    private const val USB_RESPONSE_QUEUE_MAX = 1024
 
     data class FrameData(
         val data: ByteArray,
@@ -100,33 +101,40 @@ object PythonBridge {
 
     /**
      * 向 USB 响应队列推送数据（由 onDataReceived 调用）。
+     * 队列超上限时丢弃最旧数据防 OOM。
      */
     @JvmStatic
     fun pushUsbResponse(data: ByteArray) {
         usbResponseQueue.offer(data)
+        // 上限保护：队列超过 USB_RESPONSE_QUEUE_MAX 时裁剪
+        while (usbResponseQueue.size > USB_RESPONSE_QUEUE_MAX) {
+            usbResponseQueue.poll() ?: break
+        }
     }
 
     /**
      * ML 推理（由 Python ml.predict 调用）。
+     * 当前为空实现——Kotlin 侧的 YOLO 推理管线独立运行，不经过 Python。
+     * OpenMV 兼容模式下如需 Python 侧调用推理，需后续接入 Detector 代理。
      */
     @JvmStatic
     fun mlPredict(inputData: ByteArray, modelName: String, backend: String): String? {
-        return try {
-            // TODO: delegate to Detector
-            Log.d(TAG, "mlPredict: model=$modelName backend=$backend")
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "mlPredict failed", e)
-            null
-        }
+        Log.w(TAG, "mlPredict called but not implemented (model=$modelName backend=$backend)")
+        return null
     }
 
-    fun init() {
+    /** Python 初始化完成 deferred（由 init() 完成后标记，startDetection 等待）。 */
+    val initDeferred = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    /** 挂起版本：等待 Python init 完成（在 IO 线程调用）。 */
+    suspend fun init() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             Python.getInstance().getModule("main").callAttr("init")
             Log.i(TAG, "Python init OK")
+            initDeferred.complete(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "[P01] Python init failed", e)
+            initDeferred.completeExceptionally(e)
         }
     }
 

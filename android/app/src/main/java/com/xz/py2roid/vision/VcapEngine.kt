@@ -146,11 +146,8 @@ class VcapEngine(private val context: Context) : InferenceEngine {
 
     private fun mapModelFile(modelPath: String): MappedByteBuffer {
         val file = java.io.File(modelPath)
-        val inputStream = FileInputStream(file)
-        val fileChannel = inputStream.channel
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, file.length()).also {
-            fileChannel.close()
-            inputStream.close()
+        return FileInputStream(file).use { inputStream ->
+            inputStream.channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())
         }
     }
 }

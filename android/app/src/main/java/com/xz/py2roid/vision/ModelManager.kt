@@ -40,11 +40,17 @@ class ModelManager(private val context: Context) {
         try {
             val assetsPath = ASSETS_MODELS_DIR
             val assetList = context.assets.list(assetsPath) ?: emptyArray()
+            val allowedExts = setOf(".onnx", ".tflite", ".vaim")
             for (assetName in assetList) {
-                // 跳过子目录（如 TFLite saved_model 格式的文件夹）
+                // 跳过子目录（assets.list 返回非 null 即表示是一个目录）
                 val subList = context.assets.list("$assetsPath/$assetName")
-                if (subList != null && subList.isNotEmpty()) {
+                if (subList != null) {
                     Log.d(TAG, "Skipping directory: $assetName")
+                    continue
+                }
+                // 跳过无扩展名的文件（如 saved_model.pb 等非模型文件）
+                if (allowedExts.none { assetName.endsWith(it, ignoreCase = true) }) {
+                    Log.d(TAG, "Skipping non-model file: $assetName")
                     continue
                 }
                 val targetFile = File(dir, assetName)

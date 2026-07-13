@@ -2,11 +2,15 @@
 // Groovy 脚本，通过 apply(from) 引入，避免 Kotlin DSL 访问器生成问题
 python {
     version = "3.12"
-    buildPython "D:\\python\\3.12.9\\python.exe"
+    // 优先级：环境变量 PYTHON_EXECUTABLE > 默认 python3
+    def pythonExec = System.getenv("PYTHON_EXECUTABLE") ?: "python3"
+    buildPython pythonExec
     pip {
         install "numpy"
         install "Pillow"
-        install "scipy"
+        // scipy 在 Android ARM64 上交叉编译极易失败，协议层无需此依赖
+        // 需要时通过 PYTHON_EXECUTABLE 指定含 scipy 的环境
+        // install "scipy"
         install "pyzbar"
         install "dt_apriltags"
     }

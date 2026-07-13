@@ -41,9 +41,11 @@ fun HudOverlay(
         val endPadding = if (isLandscape) 60.dp else p
 
         // 左上：FPS/推理/耗时/CPU/GPU
+        val cpuTempStr = if (hudData.cpuTemp < 0) "N/A" else "${hudData.cpuTemp}℃"
         HudBadge(
-            text = "${"%.0f".format(hudData.fps)} FPS | ${hudData.provider} | ${hudData.frameTimeMs}ms\nCPU ${hudData.cpuLoad}% ${hudData.cpuTemp}℃ | $gpuText",
+            text = "${"%.0f".format(hudData.fps)} FPS | ${hudData.provider} | ${hudData.frameTimeMs}ms\nCPU ${hudData.cpuLoad}% $cpuTempStr | $gpuText",
             color = when {
+                hudData.cpuTemp < 0 -> Color.White
                 hudData.cpuTemp >= 90 -> Color(0xFFFF5252)
                 hudData.cpuTemp >= 75 -> Color(0xFFFFD740)
                 else -> Color.White

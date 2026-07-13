@@ -93,7 +93,7 @@ object WebServerManager {
     fun isRunning(): Boolean = server != null
 
     /** WebSocket 客户端发来的消息流 */
-    private val _incomingWsMessages = MutableSharedFlow<ByteArray>(replay = 0, extraBufferCapacity = 64)
+    private val _incomingWsMessages = MutableSharedFlow<ByteArray>(replay = 0, extraBufferCapacity = 1024)
     val incomingWsMessages: Flow<ByteArray> = _incomingWsMessages.asSharedFlow()
 
     // ── WebSocket Server ──

@@ -89,13 +89,14 @@ object ImagePreprocessor {
                 Log.d(TAG, "Rotated ${rotationDegrees}°")
             }
 
-            val srcW = srcMat.width()
-            val srcH = srcMat.height()
+            // 旋转后宽高可能交换（90°/270°），用新变量避免遮蔽参数
+            val rotW = srcMat.width()
+            val rotH = srcMat.height()
 
             // ── 3. Letterbox：等比缩放 + 灰边填充 ──
-            val scale = minOf(targetWidth.toFloat() / srcW, targetHeight.toFloat() / srcH)
-            val newW = (srcW * scale).toInt().coerceAtLeast(1)
-            val newH = (srcH * scale).toInt().coerceAtLeast(1)
+            val scale = minOf(targetWidth.toFloat() / rotW, targetHeight.toFloat() / rotH)
+            val newW = (rotW * scale).toInt().coerceAtLeast(1)
+            val newH = (rotH * scale).toInt().coerceAtLeast(1)
             val padLeft = (targetWidth - newW) / 2
             val padTop = (targetHeight - newH) / 2
 

@@ -34,4 +34,17 @@ object Logger {
             _logFlow.tryEmit("[E] $enriched")
         }
     }
+
+    /**
+     * 从日志行中提取来源类别标签，如 [Route]、[ADB]、[Load]、[SCRIPT] 等。
+     * 格式1: [LEVEL] [Category] message  → 跳过级别前缀取第二个括号
+     * 格式2: [Category] message（无级别前缀，如 [SCRIPT]）
+     */
+    fun extractLogCategory(line: String): String? {
+        val m1 = Regex("^\\[[A-Z]\\] \\[([^\\]]+)\\]").find(line)
+        if (m1 != null) return m1.groupValues[1]
+        val m2 = Regex("^\\[([A-Z][A-Za-z0-9_]{2,})\\]").find(line)
+        if (m2 != null) return m2.groupValues[1]
+        return null
+    }
 }

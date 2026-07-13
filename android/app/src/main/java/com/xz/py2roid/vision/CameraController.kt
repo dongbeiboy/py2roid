@@ -69,12 +69,11 @@ class CameraController(
         }
     }
 
-    fun setCameraSelector(lensFacing: Int) {
+    fun setCameraSelector(lensFacing: Int, analyzerTargetSize: Size = Size(640, 480)) {
         this.lensFacing = lensFacing
         cameraProvider?.let { provider ->
             try {
-                val targetSize = Size(640, 480) // reuse default
-                bindUseCases(provider, targetSize)
+                bindUseCases(provider, analyzerTargetSize)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to switch camera", e)
                 onError(e)

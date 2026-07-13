@@ -144,6 +144,6 @@ object SystemStats {
     fun cpuTemp(): Int = 0
     fun gpuLoad(): Int = 0
 
-    private var _prevWallTime = 0L
-    private var _prevCpuTime = 0L
+    @Volatile private var _prevWallTime = 0L
+    @Volatile private var _prevCpuTime = 0L
 }

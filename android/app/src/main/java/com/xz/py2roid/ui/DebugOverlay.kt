@@ -39,7 +39,7 @@ fun DebugOverlay(
         val levelMatch = levelFilter.any { line.startsWith("[$it]") }
         if (!levelMatch) return@filter false
         // 类别过滤 — 从行中提取类别，如果在隐藏列表中则过滤掉
-        val cat = parseLogCategory(line)
+        val cat = com.xz.py2roid.util.Logger.extractLogCategory(line)
         cat == null || cat !in hiddenCategories
     }
     if (filtered.isEmpty()) return
@@ -79,13 +79,4 @@ fun DebugOverlay(
     }
 }
 
-/** 从日志行中提取来源类别 ([Route], [ADB], [SCRIPT], [Load] 等)，无类别返回 null */
-internal fun parseLogCategory(line: String): String? {
-    // 格式1: [LEVEL] [Category] message
-    val m1 = Regex("^\\[[A-Z]\\] \\[([^\\]]+)\\]").find(line)
-    if (m1 != null) return m1.groupValues[1]
-    // 格式2: [CATEGORY] message (无级别前缀，如 [SCRIPT]，要求至少 2 字符避免误匹配 [E]/[W]/[I])
-    val m2 = Regex("^\\[([A-Z][A-Za-z0-9_]{2,})\\]").find(line)
-    if (m2 != null) return m2.groupValues[1]
-    return null
-}
+

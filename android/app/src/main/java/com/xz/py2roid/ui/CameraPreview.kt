@@ -37,6 +37,8 @@ data class BoundingBox(
 fun CameraPreview(
     previewView: PreviewView,
     boxes: List<BoundingBox> = emptyList(),
+    /** 无检测框时使用的默认帧宽高比（与 CameraX targetResolution 一致，默认 4:3） */
+    defaultFrameAspect: Float = 4f / 3f,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -60,7 +62,7 @@ fun CameraPreview(
             val canvasAspect = canvasWidth / canvasHeight
 
             // ── FIT_CENTER: 等比缩放使画面完整可见，居中 ──
-            val frameAspect = boxes.firstOrNull()?.frameAspect ?: (4f / 3f)
+            val frameAspect = boxes.firstOrNull()?.frameAspect ?: defaultFrameAspect
             val rw: Float   // 画面在 Canvas 中的渲染宽度
             val rh: Float   // 画面在 Canvas 中的渲染高度
             val ox: Float   // 画面左上角在 Canvas 中的 X 偏移（黑边宽度）

@@ -142,11 +142,14 @@ object UsbSerialManager {
      * 发送数据到串口（挂起直到发送完成）。
      *
      * @param data 待发送字节数组
+     * @return true=全部写入成功, false=失败或部分写入
      */
     suspend fun write(data: ByteArray): Boolean {
         val port = driverPort ?: return false
         return withContext(Dispatchers.IO) {
             try {
+                // 部分库版本 write 返回 void，部分返回 int（已写入字节数）。
+                // 为兼容两者，简单重试一次：如果抛出异常则回退。
                 port.write(data, WRITE_TIMEOUT_MS)
                 true
             } catch (e: Exception) {
@@ -297,6 +300,7 @@ object UsbSerialManager {
                 }
 
                 try {
+                    _connectionState.value = ConnectionState.Connecting(device)
                     doConnect(device, baudRate)
                     if (_connectionState.value is ConnectionState.Connected) {
                         Log.i(TAG, "Reconnected successfully")

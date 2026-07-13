@@ -97,7 +97,7 @@ class MainViewModel : ViewModel() {
     /** 从磁盘加载的完整设置覆盖 StateFlow */
     fun applySavedSettings(saved: AppSettings) {
         _settings.value = saved
-        _selectedModel.value = "" // 不覆盖模型选择，由 LaunchedEffect 管理
+        // selectedModel 保持构造时的默认值（"last.onnx"），不在此覆盖
     }
 
     // ── 脚本状态 ──
@@ -209,7 +209,7 @@ class MainViewModel : ViewModel() {
 
     /** 从当前日志行中提取所有不重复的来源类别 */
     val availableCategories: Set<String>
-        get() = _logLines.value.mapNotNull { line -> extractLogCategory(line) }.toSet()
+        get() = _logLines.value.mapNotNull { line -> Logger.extractLogCategory(line) }.toSet()
 
     // HUD (called from Detector)
     fun updateHud(info: HudInfo) {
@@ -231,15 +231,11 @@ class MainViewModel : ViewModel() {
     // Detection state
     fun setDetecting(value: Boolean) { _isDetecting.value = value }
 
-    // Debug overlay — 限速：最多每 100ms 写入一次
+    // Debug overlay — 按容量限速，保留最近 MAX_LOG_LINES 条，不限时间间隔
     private val _logLines = MutableStateFlow<List<String>>(emptyList())
     val logLines: StateFlow<List<String>> = _logLines.asStateFlow()
-    private var lastLogTime = 0L
 
     fun addLogLine(line: String) {
-        val now = System.currentTimeMillis()
-        if (now - lastLogTime < 100) return // 限速 10 条/秒
-        lastLogTime = now
         val current = _logLines.value
         val updated = if (current.size >= MAX_LOG_LINES) {
             current.drop(current.size - MAX_LOG_LINES + 1) + line
@@ -259,13 +255,4 @@ class MainViewModel : ViewModel() {
     }
 }
 
-/** 从日志行中提取来源类别，如 [Route] [ADB] [Load] [SCRIPT] 等 */
-internal fun extractLogCategory(line: String): String? {
-    // 格式1: [LEVEL] [Category] message  → 跳过级别前缀取第二个括号
-    val m1 = Regex("^\\[[A-Z]\\] \\[([^\\]]+)\\]").find(line)
-    if (m1 != null) return m1.groupValues[1]
-    // 格式2: [Category] message (无级别前缀，如 [SCRIPT]，要求≥2字符避免误匹配 [E]/[W]/[I])
-    val m2 = Regex("^\\[([A-Z][A-Za-z0-9_]{2,})\\]").find(line)
-    if (m2 != null) return m2.groupValues[1]
-    return null
-}
+// 日志类别提取统一委托到 Logger.extractLogCategory
