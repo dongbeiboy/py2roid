@@ -59,6 +59,10 @@ class MainActivity : ComponentActivity() {
     private var adbModelOverride: String? = null
     private var adbBackendOverride: InferenceBackend? = null
     private var adbLogWeb: String? = null
+    private var adbConfOverride: Float? = null
+    private var adbIouOverride: Float? = null
+    private var adbCommOverride: CommMode? = null
+    private var adbDebugOverride: Boolean? = null
 
     /** ADB 传参时跳过配置页直接检测 */
     private val adbActive get() = adbModelOverride != null || adbBackendOverride != null
@@ -77,7 +81,9 @@ class MainActivity : ComponentActivity() {
         // [DEBUG] ADB intent extra 覆写（仅 debug 包有效，存字段不走 prefs 避免 LaunchedEffect 覆盖）
         // adb shell am start -n com.xz.py2roid/.MainActivity \
         //   --es model yolov8n.tflite --es backend TFLITE \
-        //   --es log_web http://192.168.1.100:8765
+        //   --es log_web http://192.168.1.100:8765 \
+        //   --ef confidence 0.5 --ef iou 0.45 \
+        //   --es comm USB --ez debug true
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
             intent?.extras?.let { extras ->
                 extras.getString("model")?.let {
@@ -95,6 +101,27 @@ class MainActivity : ComponentActivity() {
                 extras.getString("log_web")?.let {
                     adbLogWeb = it
                     Logger.i("[ADB] log push -> $it")
+                }
+                extras.getString("confidence")?.toFloatOrNull()?.let {
+                    adbConfOverride = it
+                    Logger.i("[ADB] confidence override: $it")
+                }
+                extras.getString("iou")?.toFloatOrNull()?.let {
+                    adbIouOverride = it
+                    Logger.i("[ADB] iou override: $it")
+                }
+                extras.getString("comm")?.let {
+                    try {
+                        adbCommOverride = CommMode.valueOf(it)
+                        Logger.i("[ADB] comm mode override: $it")
+                    } catch (_: IllegalArgumentException) {
+                        Logger.w("[ADB] unknown comm mode: $it")
+                    }
+                }
+                extras.getString("debug")?.let {
+                    val v = it.equals("true", ignoreCase = true) || it == "1"
+                    adbDebugOverride = v
+                    Logger.i("[ADB] debug overlay: $v")
                 }
             }
         }
@@ -124,6 +151,10 @@ class MainActivity : ComponentActivity() {
         // 从磁盘加载设置到 ViewModel（让 Config/Settings 页显示真实值）
         val loadedSettings = settingsStore.load()
         viewModel.applySavedSettings(loadedSettings)
+        // [DEBUG] ADB debug override 覆写 debug overlay
+        if (adbDebugOverride != null) {
+            viewModel.updateDebugOverlay(adbDebugOverride!!)
+        }
 
         setContent {
             val previewView by viewModel.previewView.collectAsState()
@@ -238,8 +269,8 @@ class MainActivity : ComponentActivity() {
         val settings = settingsStore.load()
         val scope = lifecycleScope
 
-        // ── 启动通讯基础设施 ──
-        when (settings.commMode) {
+        // ── 启动通讯基础设施（adbCommOverride 优先）──
+        when (adbCommOverride ?: settings.commMode) {
             CommMode.USB -> {
                 UsbSerialManager.start(this)
                 Logger.i("USB serial manager started (mode=${settings.commMode})")
@@ -351,10 +382,10 @@ class MainActivity : ComponentActivity() {
             viewModel.updateModels(models.map { com.xz.py2roid.ui.ModelItem(name = it.name, inputSize = it.inputSize) })
             val modelPath = models.find { it.name == modelName }?.path
             if (modelPath != null) {
-                det.confidenceThreshold = settings.confidenceThreshold
-                det.iouThreshold = settings.iouThreshold
+                det.confidenceThreshold = adbConfOverride ?: settings.confidenceThreshold
+                det.iouThreshold = adbIouOverride ?: settings.iouThreshold
                 Logger.i("[Device] ${Build.MANUFACTURER} ${Build.MODEL} SDK=${Build.VERSION.SDK_INT}, " +
-                        "backend=$backend, conf=${settings.confidenceThreshold}" +
+                        "backend=$backend, conf=${det.confidenceThreshold}" +
                         if (adbModelOverride != null) " (adb: model=$modelName backend=$backend)" else "")
                 det.loadModel(modelPath, backend)
                 Logger.i("Model loaded: $modelName")

@@ -32,7 +32,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,10 +61,16 @@ fun ConfigScreen(
     val modelBackends = remember(selectedModel, enabledBackends) {
         InferenceBackend.backendsForModel(selectedModel, enabledBackends)
     }
+    var showNoModelError by remember { mutableStateOf(false) }
+
     LaunchedEffect(selectedModel) {
         if (settings.inferenceBackend !in modelBackends) {
             onBackendChange(InferenceBackend.Auto)
         }
+    }
+    LaunchedEffect(settings.appMode) { showNoModelError = false }
+    LaunchedEffect(selectedModel) {
+        if (selectedModel.isNotBlank()) showNoModelError = false
     }
 
     Scaffold(
@@ -169,7 +178,14 @@ fun ConfigScreen(
 
             // 开始检测按钮
             Button(
-                onClick = onStart,
+                onClick = {
+                    if (settings.appMode == AppMode.LEGACY && selectedModel.isBlank()) {
+                        showNoModelError = true
+                    } else {
+                        showNoModelError = false
+                        onStart()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                 shape = MaterialTheme.shapes.small
@@ -177,6 +193,16 @@ fun ConfigScreen(
                 Text(
                     if (settings.appMode == AppMode.OPENMV) "开始脚本模式" else "开始检测",
                     fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White
+                )
+            }
+
+            if (showNoModelError) {
+                Text(
+                    text = "请先选择一个模型",
+                    color = Color(0xFFEF5350),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         }
