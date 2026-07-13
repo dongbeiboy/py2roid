@@ -183,3 +183,80 @@ def _handle_error(payload: bytes) -> None:
         log_e(TAG, f"MCU 错误: code=0x{err_code:02X} msg={err_msg}")
         if _on_error:
             _on_error(err_code, err_msg)
+
+
+# ── 桥接帧转换（供 PythonBridge.getFrameBytes 调用） ──
+
+def _bridge_convert_frame(
+    data: bytes,
+    src_w: int, src_h: int, src_fmt: int,
+    dst_w: int, dst_h: int, dst_fmt: int,
+) -> list:
+    """将 Kotlin 侧的帧缓存转换为 OpenMV sensor.snapshot() 所需格式。
+
+    Args:
+        data: 原始帧数据（一般为 NV21）
+        src_w, src_h, src_fmt: 源帧宽、高、格式（1=RGB565, 2=GRAYSCALE, 3=NV21）
+        dst_w, dst_h, dst_fmt: 目标宽、高、格式（1=RGB565, 2=GRAYSCALE）
+
+    Returns:
+        [converted_bytes, actual_format]: 转换后的像素数据和实际格式
+    """
+    import numpy as np
+
+    try:
+        if src_fmt == 3:  # NV21
+            # NV21 → RGB565（降采样到目标分辨率）
+            # 先解析 NV21 的 Y 和 UV 平面
+            y_size = src_w * src_h
+            uv_size = src_w * src_h // 2
+            y_plane = np.frombuffer(data[:y_size], dtype=np.uint8).reshape(src_h, src_w)
+            uv_plane = np.frombuffer(data[y_size:y_size + uv_size], dtype=np.uint8).reshape(src_h // 2, src_w)
+
+            if dst_fmt == 2:  # GRAYSCALE
+                if dst_w != src_w or dst_h != src_h:
+                    # 最近邻缩放到目标分辨率
+                    out_h, out_w = dst_h, dst_w
+                    y_small = y_plane[
+                        np.linspace(0, src_h - 1, out_h).astype(int)
+                    ][:, np.linspace(0, src_w - 1, out_w).astype(int)]
+                    return [bytearray(y_small.tobytes()), dst_fmt]
+                return [bytearray(y_plane.tobytes()), dst_fmt]
+            else:  # RGB565
+                # NV21 → BGR（近似）
+                import struct
+                # 简化：只取 Y 平面 + 最近邻上采样 UV
+                uv = np.repeat(np.repeat(uv_plane, 2, axis=0), 2, axis=1)
+                u = uv[:, :src_w]
+                v = uv[:, src_w:]
+
+                # YUV → RGB
+                y = y_plane.astype(np.float32)
+                u = u.astype(np.float32) - 128.0
+                v = v.astype(np.float32) - 128.0
+
+                r = np.clip(y + 1.402 * v, 0, 255).astype(np.uint8)
+                g = np.clip(y - 0.344 * u - 0.714 * v, 0, 255).astype(np.uint8)
+                b = np.clip(y + 1.772 * u, 0, 255).astype(np.uint8)
+
+                # RGB → RGB565 (R:5, G:6, B:5)
+                if dst_w != src_w or dst_h != src_h:
+                    out_h, out_w = dst_h, dst_w
+                    rows = np.linspace(0, src_h - 1, out_h).astype(int)
+                    cols = np.linspace(0, src_w - 1, out_w).astype(int)
+                    r = r[rows][:, cols]
+                    g = g[rows][:, cols]
+                    b = b[rows][:, cols]
+
+                rgb565 = (np.uint16(r >> 3) << 11) | \
+                         (np.uint16(g >> 2) << 5) | \
+                         np.uint16(b >> 3)
+                return [bytearray(rgb565.tobytes()), dst_fmt]
+
+        # 未知源格式，直接返回原数据
+        log_w(TAG, f"_bridge_convert_frame: 未知源格式 src_fmt={src_fmt}")
+        return [bytearray(data), src_fmt]
+
+    except Exception as e:
+        log_e(TAG, f"_bridge_convert_frame 失败: {e}")
+        return [bytearray(data), src_fmt]

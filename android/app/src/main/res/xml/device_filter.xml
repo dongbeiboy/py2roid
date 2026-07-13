@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- FTDI -->
+    <!-- FTDI (0x0403) -->
     <usb-device vendor-id="1027" />
-    <!-- CP210x -->
+    <!-- CP210x (0x10C4) -->
     <usb-device vendor-id="4292" />
-    <!-- CH340 -->
+    <!-- CH340 (0x1A86) -->
     <usb-device vendor-id="6790" />
+    <!-- STM32 VCP / OpenMV CDC_ACM (0x0483) -->
+    <usb-device vendor-id="1155" />
+    <!-- OpenMV (0x1209) -->
+    <usb-device vendor-id="4617" />
+    <!-- Arduino CDC_ACM (0x2341) -->
+    <usb-device vendor-id="9025" />
 </resources>

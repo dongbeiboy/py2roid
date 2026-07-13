@@ -50,19 +50,34 @@ object ImagePreprocessor {
         targetWidth: Int = 640,
         targetHeight: Int = 640
     ): PreprocessResult {
+        val nv21 = nv21FromYuv420(image)
+        return preprocess(nv21, image.width, image.height, rotationDegrees, targetWidth, targetHeight)
+    }
+
+    /**
+     * 预处理预提取的 NV21 字节数组 → 模型输入张量。
+     * 与 [preprocess(Image)] 共享同一处理管线，避免重复读取 Image planes。
+     */
+    fun preprocess(
+        nv21: ByteArray,
+        srcW: Int,
+        srcH: Int,
+        rotationDegrees: Int = 0,
+        targetWidth: Int = 640,
+        targetHeight: Int = 640
+    ): PreprocessResult {
         try {
             val t0 = System.currentTimeMillis()
 
-            // ── 1. YUV_420_888 → NV21 → BGR Mat（跳过 JPEG，无损）──
-            val nv21 = nv21FromYuv420(image)
-            val nv21Mat = Mat(image.height * 3 / 2, image.width, CvType.CV_8UC1)
+            // ── 1. NV21 → BGR Mat ──
+            val nv21Mat = Mat(srcH * 3 / 2, srcW, CvType.CV_8UC1)
             nv21Mat.put(0, 0, nv21)
             val srcMat = Mat()
             Imgproc.cvtColor(nv21Mat, srcMat, Imgproc.COLOR_YUV2BGR_NV21)
             nv21Mat.release()
 
             val t1 = System.currentTimeMillis()
-            Log.d(TAG, "YUV→BGR ${image.width}x${image.height} = ${t1 - t0}ms")
+            Log.d(TAG, "YUV→BGR ${srcW}x${srcH} = ${t1 - t0}ms")
 
             // ── 2. 旋转校正（传感器帧 → 屏幕方向） ──
             if (rotationDegrees != 0) {
@@ -156,7 +171,11 @@ object ImagePreprocessor {
      * 逐行拷贝，按 pixelStride 精确寻址，带边界保护
      */
     private var _yuvLogged = false
-    private fun nv21FromYuv420(image: Image): ByteArray {
+    /**
+     * 从 CameraX YUV_420_888 Image 提取 NV21 格式数据。
+     * 公开给 PythonBridge 帧缓存使用。
+     */
+    fun nv21FromYuv420(image: Image): ByteArray {
         val planes = image.planes
         val w = image.width
         val h = image.height
