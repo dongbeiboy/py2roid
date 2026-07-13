@@ -20,6 +20,9 @@ interface InferenceEngine {
     val inputWidth: Int
     val inputHeight: Int
 
+    /** 类别名映射（从模型元数据中读取，如 {0:"miku", 1:"teto"}），空 map 表示使用默认 */
+    val classNames: Map<Int, String>
+
     /**
      * 加载模型。若失败应抛出异常，由调用方决定是否回退。
      * @param modelPath 模型文件绝对路径（.onnx 或 .vaim）

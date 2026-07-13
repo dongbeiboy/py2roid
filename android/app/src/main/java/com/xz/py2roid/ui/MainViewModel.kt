@@ -56,7 +56,7 @@ class MainViewModel : ViewModel() {
     )
     val models: StateFlow<List<ModelItem>> = _models.asStateFlow()
 
-    private val _selectedModel = MutableStateFlow("yolov8n.onnx")
+    private val _selectedModel = MutableStateFlow("last.onnx")
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
 
     // PreviewView 引用

@@ -24,10 +24,13 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
     private var _inputWidth = 640
     private var _inputHeight = 640
 
+    private val _classNames = mutableMapOf<Int, String>()
+
     override val name get() = "ONNX Runtime"
     override val provider get() = _provider
     override val inputWidth get() = _inputWidth
     override val inputHeight get() = _inputHeight
+    override val classNames: Map<Int, String> get() = _classNames
 
     fun loadModel(modelPath: String, backend: InferenceBackend) {
         close()
@@ -138,8 +141,24 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
                 _inputHeight = dims[2]
                 _inputWidth = dims[3]
             }
+
+            // 从 ONNX 自定义元数据读取类别名（Ultralytics 导出时自动嵌入）
+            val meta = sess.metadata
+            val customMeta = meta.customMetadata
+            val namesStr = customMeta["names"]
+            if (namesStr != null) {
+                // 格式: {0: 'miku', 1: 'teto'}
+                Regex("(\\d+):\\s*'([^']+)'").findAll(namesStr).forEach { match ->
+                    val id = match.groupValues[1].toIntOrNull()
+                    val name = match.groupValues[2]
+                    if (id != null) {
+                        _classNames[id] = name
+                    }
+                }
+                Log.i(TAG, "Read class names from model: $_classNames")
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not read input shape, using defaults", e)
+            Log.w(TAG, "Could not read model metadata", e)
         }
     }
 }
