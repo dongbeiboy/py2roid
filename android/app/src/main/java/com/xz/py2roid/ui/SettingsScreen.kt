@@ -1,7 +1,11 @@
 package com.xz.py2roid.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,10 +13,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,10 +41,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +60,8 @@ data class AppSettings(
     val commMode: CommMode = CommMode.USB,
     val inferenceBackend: InferenceBackend = InferenceBackend.Auto,
     val debugOverlayEnabled: Boolean = false,
+    val debugOverlayLevelFilter: Set<String> = setOf("E", "W", "I"),
+    val debugOverlayHiddenCategories: Set<String> = emptySet(),
     val startOnConfig: Boolean = true,
     val appMode: AppMode = AppMode.LEGACY
 )
@@ -71,7 +89,7 @@ enum class InferenceBackend(val label: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
@@ -82,6 +100,9 @@ fun SettingsScreen(
     onCommModeChange: (CommMode) -> Unit,
     onBackendChange: (InferenceBackend) -> Unit,
     onDebugOverlayChange: (Boolean) -> Unit,
+    onDebugOverlayLevelFilterChange: (Set<String>) -> Unit = {},
+    onDebugOverlayHiddenCategoriesChange: (Set<String>) -> Unit = {},
+    availableCategories: Set<String> = emptySet(),
     onAppModeChange: (AppMode) -> Unit = {},
     onBack: () -> Unit,
     onGoConfig: () -> Unit = {}
@@ -172,12 +193,152 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
             SectionHeader("调试")
             SettingsCard {
+                var showLevelMenu by remember { mutableStateOf(false) }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("日志覆盖层", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
+                    Box {
+                        Text(
+                            text = "日志覆盖层",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.combinedClickable(
+                                onClick = { /* 单击无操作，避免与 Switch 冲突 */ },
+                                onLongClick = { showLevelMenu = true }
+                            )
+                        )
+
+                        DropdownMenu(
+                            expanded = showLevelMenu,
+                            onDismissRequest = { showLevelMenu = false },
+                            offset = DpOffset(0.dp, 0.dp),
+                            modifier = Modifier
+                                .background(Color(0xFF252526), RoundedCornerShape(8.dp))
+                                .width(200.dp)
+                        ) {
+                            Text(
+                                text = "显示级别",
+                                fontSize = 12.sp,
+                                color = Color(0xFF888888),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                            HorizontalDivider(color = Color(0xFF333333))
+
+                            val allLevels = listOf(
+                                "E" to "错误",
+                                "W" to "警告",
+                                "I" to "信息"
+                            )
+                            allLevels.forEach { (level, label) ->
+                                val checked = level in settings.debugOverlayLevelFilter
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Checkbox(
+                                                checked = checked,
+                                                onCheckedChange = null,
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = Color(0xFF4CAF50),
+                                                    uncheckedColor = Color(0xFF666666),
+                                                    checkmarkColor = Color.White
+                                                )
+                                            )
+                                            val levelColor = when (level) {
+                                                "E" -> Color(0xFFFF5252)
+                                                "W" -> Color(0xFFFFD740)
+                                                else -> Color(0xFF69F0AE)
+                                            }
+                                            Text(
+                                                text = "[$level] $label",
+                                                fontSize = 13.sp,
+                                                color = levelColor
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        val updated = if (checked)
+                                            settings.debugOverlayLevelFilter - level
+                                        else
+                                            settings.debugOverlayLevelFilter + level
+                                        onDebugOverlayLevelFilterChange(if (updated.isEmpty()) setOf(level) else updated)
+                                    },
+                                    modifier = Modifier.padding(0.dp)
+                                )
+                            }
+
+                            if (settings.debugOverlayLevelFilter.isNotEmpty()) {
+                                HorizontalDivider(color = Color(0xFF333333))
+                                val filterSummary = settings.debugOverlayLevelFilter.sorted().joinToString(", ")
+                                Text(
+                                    text = "当前: $filterSummary",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF666666),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            // ── 类别过滤 ──
+                            if (availableCategories.isNotEmpty()) {
+                                HorizontalDivider(color = Color(0xFF333333))
+                                Text(
+                                    text = "隐藏类别",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF888888),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                                HorizontalDivider(color = Color(0xFF333333))
+
+                                val sortedCats = availableCategories.sorted()
+                                sortedCats.forEach { cat ->
+                                    val hidden = cat in settings.debugOverlayHiddenCategories
+                                    val showCat = !hidden
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Checkbox(
+                                                    checked = showCat,
+                                                    onCheckedChange = null,
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = Color(0xFF4CAF50),
+                                                        uncheckedColor = Color(0xFF666666),
+                                                        checkmarkColor = Color.White
+                                                    )
+                                                )
+                                                Text(
+                                                    text = "[$cat]",
+                                                    fontSize = 13.sp,
+                                                    color = Color(0xFF569CD6)
+                                                )
+                                                Text(
+                                                    text = if (hidden) " 隐藏" else "",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF666666)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            val updated = if (hidden)
+                                                settings.debugOverlayHiddenCategories - cat
+                                            else
+                                                settings.debugOverlayHiddenCategories + cat
+                                            onDebugOverlayHiddenCategoriesChange(updated)
+                                        },
+                                        modifier = Modifier.padding(0.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Switch(
                         checked = settings.debugOverlayEnabled,
                         onCheckedChange = onDebugOverlayChange,

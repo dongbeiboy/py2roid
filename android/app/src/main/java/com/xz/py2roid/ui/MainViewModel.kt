@@ -199,6 +199,18 @@ class MainViewModel : ViewModel() {
         _settings.value = _settings.value.copy(debugOverlayEnabled = enabled)
     }
 
+    fun updateDebugOverlayLevelFilter(levels: Set<String>) {
+        _settings.value = _settings.value.copy(debugOverlayLevelFilter = levels)
+    }
+
+    fun updateDebugOverlayHiddenCategories(categories: Set<String>) {
+        _settings.value = _settings.value.copy(debugOverlayHiddenCategories = categories)
+    }
+
+    /** 从当前日志行中提取所有不重复的来源类别 */
+    val availableCategories: Set<String>
+        get() = _logLines.value.mapNotNull { line -> extractLogCategory(line) }.toSet()
+
     // HUD (called from Detector)
     fun updateHud(info: HudInfo) {
         _hudInfo.value = info
@@ -245,4 +257,15 @@ class MainViewModel : ViewModel() {
         super.onCleared()
         // Flow 收集随 viewModelScope 自动取消，无需手动清理
     }
+}
+
+/** 从日志行中提取来源类别，如 [Route] [ADB] [Load] [SCRIPT] 等 */
+internal fun extractLogCategory(line: String): String? {
+    // 格式1: [LEVEL] [Category] message  → 跳过级别前缀取第二个括号
+    val m1 = Regex("^\\[[A-Z]\\] \\[([^\\]]+)\\]").find(line)
+    if (m1 != null) return m1.groupValues[1]
+    // 格式2: [Category] message (无级别前缀，如 [SCRIPT]，要求≥2字符避免误匹配 [E]/[W]/[I])
+    val m2 = Regex("^\\[([A-Z][A-Za-z0-9_]{2,})\\]").find(line)
+    if (m2 != null) return m2.groupValues[1]
+    return null
 }

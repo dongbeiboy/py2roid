@@ -178,6 +178,9 @@ fun MainScreen(
                     onCommModeChange = viewModel::updateCommMode,
                     onBackendChange = viewModel::updateBackend,
                     onDebugOverlayChange = viewModel::updateDebugOverlay,
+                    onDebugOverlayLevelFilterChange = viewModel::updateDebugOverlayLevelFilter,
+                    onDebugOverlayHiddenCategoriesChange = viewModel::updateDebugOverlayHiddenCategories,
+                    availableCategories = viewModel.availableCategories,
                     onAppModeChange = viewModel::updateAppMode,
                     onBack = viewModel::navigateToMain,
                     onGoConfig = viewModel::navigateToConfig
@@ -262,6 +265,8 @@ fun MainScreen(
                     if (isLandscape) {
                         DebugOverlay(
                             logLines = logLines,
+                            levelFilter = settings.debugOverlayLevelFilter,
+                            hiddenCategories = settings.debugOverlayHiddenCategories,
                             isLandscape = true,
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -270,6 +275,8 @@ fun MainScreen(
                     } else {
                         DebugOverlay(
                             logLines = logLines,
+                            levelFilter = settings.debugOverlayLevelFilter,
+                            hiddenCategories = settings.debugOverlayHiddenCategories,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 56.dp)

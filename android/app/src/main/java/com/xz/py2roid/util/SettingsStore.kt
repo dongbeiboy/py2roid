@@ -17,6 +17,10 @@ class SettingsStore(context: Context) {
             commMode = CommMode.valueOf(prefs.getString("commMode", CommMode.USB.name) ?: CommMode.USB.name),
             inferenceBackend = InferenceBackend.valueOf(prefs.getString("backend", InferenceBackend.Auto.name) ?: InferenceBackend.Auto.name),
             debugOverlayEnabled = prefs.getBoolean("debugOverlay", false),
+            debugOverlayLevelFilter = prefs.getString("debugOverlayFilter", "E,W,I")
+                ?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: setOf("E", "W", "I"),
+            debugOverlayHiddenCategories = prefs.getString("debugOverlayHiddenCats", "")
+                ?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet(),
             startOnConfig = prefs.getBoolean("startOnConfig", true),
             appMode = AppMode.valueOf(prefs.getString("appMode", AppMode.LEGACY.name) ?: AppMode.LEGACY.name)
         )
@@ -29,6 +33,8 @@ class SettingsStore(context: Context) {
             putString("commMode", settings.commMode.name)
             putString("backend", settings.inferenceBackend.name)
             putBoolean("debugOverlay", settings.debugOverlayEnabled)
+            putString("debugOverlayFilter", settings.debugOverlayLevelFilter.joinToString(","))
+            putString("debugOverlayHiddenCats", settings.debugOverlayHiddenCategories.joinToString(","))
             putBoolean("startOnConfig", settings.startOnConfig)
             putString("appMode", settings.appMode.name)
             apply()
