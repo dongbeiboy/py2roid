@@ -17,15 +17,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.xz.py2roid.bridge.ScriptRunner
 import com.xz.py2roid.vision.ModelManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,6 +49,11 @@ fun MainScreen(
     val selectedModel by viewModel.selectedModel.collectAsState()
     val detectionBoxes by viewModel.detectionBoxes.collectAsState()
     val logLines by viewModel.logLines.collectAsState()
+    val scriptState by viewModel.scriptState.collectAsState()
+    val scriptLogLines by viewModel.scriptLogLines.collectAsState()
+    val showScriptPicker by viewModel.showScriptPicker.collectAsState()
+    val availableScripts by viewModel.availableScripts.collectAsState()
+    val selectedScript by viewModel.selectedScript.collectAsState()
 
     // 全局隐藏状态栏，所有子界面（主界面 + 设置页）共享全屏
     val view = LocalView.current
@@ -60,6 +68,48 @@ fun MainScreen(
     val previewView = remember { PreviewView(context) }
     LaunchedEffect(previewView) {
         viewModel.setPreviewView(previewView)
+    }
+
+    // 文件导入选择器
+    val scope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null || modelManager == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val mgr = modelManager ?: return@launch
+            val fileName = getFileName(context, uri)
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    mgr.importModel(stream, fileName)
+                }
+                val scanned = mgr.scanModels().map {
+                    ModelItem(name = it.name, inputSize = it.inputSize)
+                }
+                withContext(Dispatchers.Main) {
+                    viewModel.updateModels(scanned)
+                }
+            }
+        }
+    }
+
+    // 脚本导入文件选择器
+    val scriptImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val fileName = getScriptFileName(context, uri)
+            withContext(Dispatchers.IO) {
+                val scriptsDir = java.io.File(context.filesDir, "scripts")
+                scriptsDir.mkdirs()
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val target = java.io.File(scriptsDir, fileName)
+                    target.outputStream().use { stream.copyTo(it) }
+                }
+                scanScripts(context, viewModel)
+            }
+        }
     }
 
     BoxWithConstraints(
@@ -127,6 +177,7 @@ fun MainScreen(
                     onCommModeChange = viewModel::updateCommMode,
                     onBackendChange = viewModel::updateBackend,
                     onDebugOverlayChange = viewModel::updateDebugOverlay,
+                    onAppModeChange = viewModel::updateAppMode,
                     onBack = viewModel::navigateToMain,
                     onGoConfig = viewModel::navigateToConfig
                 )
@@ -153,20 +204,55 @@ fun MainScreen(
                 if (isLandscape) {
                     ControlBar(
                         isLandscape = true,
+                        appMode = settings.appMode,
                         onSettingsClick = viewModel::navigateToSettings,
                         onModelClick = viewModel::showModelPicker,
                         onCommClick = viewModel::showCommPicker,
+                        onScriptClick = viewModel::showScriptPicker,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                     )
                 } else {
                     ControlBar(
+                        appMode = settings.appMode,
                         onSettingsClick = viewModel::navigateToSettings,
                         onModelClick = viewModel::showModelPicker,
                         onCommClick = viewModel::showCommPicker,
+                        onScriptClick = viewModel::showScriptPicker,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .navigationBarsPadding()
+                    )
+                }
+
+                // OpenMV 模式：脚本控制台 + HUD 状态行
+                if (settings.appMode == AppMode.OPENMV) {
+                    val scriptLabel = when (scriptState) {
+                        ScriptRunner.ScriptState.IDLE -> "空闲"
+                        ScriptRunner.ScriptState.RUNNING -> "运行中"
+                        ScriptRunner.ScriptState.STOPPED -> "已停止"
+                        ScriptRunner.ScriptState.ERROR -> "错误"
+                    }
+                    // 脚本状态信息（叠加在 HUD 区域）
+                    Text(
+                        text = "📜 ${selectedScript?.displayName ?: "未选择"} $scriptLabel",
+                        fontSize = 10.sp,
+                        color = Color(0xFF4CAF50),
+                        modifier = Modifier
+                            .align(if (isLandscape) Alignment.TopStart else Alignment.TopCenter)
+                            .padding(8.dp)
+                    )
+
+                    // 脚本控制台（左下角）
+                    ScriptConsole(
+                        lines = scriptLogLines,
+                        isRunning = scriptState == ScriptRunner.ScriptState.RUNNING,
+                        onStart = { /* see MainActivity */ },
+                        onStop = { /* see MainActivity */ },
+                        onRestart = { /* see MainActivity */ },
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 4.dp, bottom = if (isLandscape) 4.dp else 56.dp)
                     )
                 }
 
@@ -193,29 +279,6 @@ fun MainScreen(
         }
     }
 
-    // 模型导入文件选择器
-    val scope = rememberCoroutineScope()
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null || modelManager == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val mgr = modelManager ?: return@launch
-            val fileName = getFileName(context, uri)
-            withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    mgr.importModel(stream, fileName)
-                }
-                val scanned = mgr.scanModels().map {
-                    ModelItem(name = it.name, inputSize = it.inputSize)
-                }
-                withContext(Dispatchers.Main) {
-                    viewModel.updateModels(scanned)
-                }
-            }
-        }
-    }
-
     // 模型选择 BottomSheet（独立于 when，始终可触发）
     if (showModelPicker) {
         ModelPicker(
@@ -236,7 +299,165 @@ fun MainScreen(
             onDismiss = viewModel::hideCommPicker
         )
     }
+
+    // 脚本选择 BottomSheet
+    if (showScriptPicker) {
+        ScriptPicker(
+            scripts = availableScripts,
+            selectedScript = selectedScript,
+            onScriptSelected = { script ->
+                viewModel.selectScript(script)
+                viewModel.hideScriptPicker()
+            },
+            onImportClick = { scriptImportLauncher.launch(arrayOf("*/*")) },
+            onDeployExamples = {
+                scope.launch {
+                    deployExampleScripts(context, viewModel)
+                }
+            },
+            onDismiss = viewModel::hideScriptPicker
+        )
+    }
 }
+
+private fun getScriptFileName(context: android.content.Context, uri: android.net.Uri): String {
+    var name = "script.py"
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (nameIndex >= 0 && cursor.moveToFirst()) {
+            name = cursor.getString(nameIndex)
+        }
+    }
+    return name
+}
+
+private fun scanScripts(context: android.content.Context, viewModel: MainViewModel) {
+    val scriptsDir = java.io.File(context.filesDir, "scripts")
+    if (!scriptsDir.exists()) return
+    val files = scriptsDir.listFiles { f -> f.name.endsWith(".py") } ?: emptyArray()
+    viewModel.setScripts(files.map { ScriptFile(name = it.name, displayName = it.name) })
+}
+
+private fun deployExampleScripts(context: android.content.Context, viewModel: MainViewModel) {
+    val scriptsDir = java.io.File(context.filesDir, "scripts")
+    scriptsDir.mkdirs()
+    val examples = mapOf(
+        "01_color_tracking.py" to _EXAMPLE_COLOR_TRACKING,
+        "02_apriltag_detection.py" to _EXAMPLE_APRILTAG,
+        "03_qrcode_scanner.py" to _EXAMPLE_QRCODE,
+        "04_uart_relay.py" to _EXAMPLE_UART_RELAY,
+        "05_face_detection.py" to _EXAMPLE_FACE_DETECTION,
+    )
+    for ((name, content) in examples) {
+        val f = java.io.File(scriptsDir, name)
+        if (!f.exists()) {
+            f.writeText(content)
+        }
+    }
+    scanScripts(context, viewModel)
+}
+
+// ── 内置示例脚本 ──
+
+private val _EXAMPLE_COLOR_TRACKING = """
+import sensor, image, time
+from machine import UART
+
+sensor.reset()
+sensor.set_pixformat(sensor.RGB565)
+sensor.set_framesize(sensor.QVGA)
+sensor.skip_frames(100)
+
+uart = UART(3, 115200)
+red_threshold = (30, 100, 15, 127, 15, 127)
+
+while True:
+    img = sensor.snapshot()
+    blobs = img.find_blobs([red_threshold])
+    if blobs:
+        for b in blobs:
+            img.draw_rectangle(b.rect(), color=(255,0,0))
+            img.draw_cross(b.cx(), b.cy(), color=(255,0,0))
+            uart.write(f"RED:{b.cx()},{b.cy()},{b.w()},{b.h()}\\n")
+    time.sleep_ms(50)
+""".trimIndent()
+
+private val _EXAMPLE_APRILTAG = """
+import sensor, image, time
+from machine import UART
+
+sensor.reset()
+sensor.set_pixformat(sensor.RGB565)
+sensor.set_framesize(sensor.VGA)
+sensor.skip_frames(100)
+
+uart = UART(3, 115200)
+while True:
+    img = sensor.snapshot()
+    tags = img.find_apriltags()
+    for tag in tags:
+        img.draw_rectangle(tag.rect(), color=(0,255,0))
+        img.draw_string(tag.cx(), tag.cy(), f"ID:{tag.id()}", color=(0,255,0))
+        uart.write(f"TAG:{tag.id()},{tag.cx()},{tag.cy()}\\n")
+""".trimIndent()
+
+private val _EXAMPLE_QRCODE = """
+import sensor, image, time
+from machine import UART
+
+sensor.reset()
+sensor.set_pixformat(sensor.GRAYSCALE)
+sensor.set_framesize(sensor.VGA)
+sensor.skip_frames(100)
+
+uart = UART(3, 115200)
+while True:
+    img = sensor.snapshot()
+    codes = img.find_qrcodes()
+    for code in codes:
+        img.draw_rectangle(code.rect(), color=(255,255,255))
+        img.draw_string(code.cx(), code.cy(), code.payload()[:20])
+        uart.write(f"QR:{code.payload()}\\n")
+    time.sleep_ms(100)
+""".trimIndent()
+
+private val _EXAMPLE_UART_RELAY = """
+import sensor, time
+from machine import UART
+
+sensor.reset()
+sensor.set_pixformat(sensor.RGB565)
+sensor.set_framesize(sensor.QVGA)
+
+uart = UART(3, 115200)
+counter = 0
+while True:
+    uart.write(f"HEARTBEAT:{counter}\\n")
+    counter += 1
+    time.sleep_ms(1000)
+""".trimIndent()
+
+private val _EXAMPLE_FACE_DETECTION = """
+import sensor, image, time
+from machine import UART
+
+sensor.reset()
+sensor.set_pixformat(sensor.GRAYSCALE)
+sensor.set_framesize(sensor.QVGA)
+sensor.skip_frames(100)
+
+face_cascade = image.HaarCascade("frontalface")
+uart = UART(3, 115200)
+
+while True:
+    img = sensor.snapshot()
+    faces = img.find_features(face_cascade)
+    for f in faces:
+        img.draw_rectangle(f.rect(), color=(255,255,255))
+        uart.write(f"FACE:{f.x()},{f.y()},{f.w()},{f.h()}\\n")
+    if not faces:
+        uart.write("NO_FACE\\n")
+""".trimIndent()
 
 private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
     var name = "model.onnx"

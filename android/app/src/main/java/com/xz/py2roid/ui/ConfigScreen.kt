@@ -64,48 +64,64 @@ fun ConfigScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 模型选择
-            Text("模型", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                models.forEach { model ->
-                    val isSelected = model.name == selectedModel
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onModelSelected(model.name) },
-                        color = if (isSelected) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color(0xFF2A2A2A),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+            // 运行模式
+            Text("运行模式", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Surface(
+                color = Color(0xFF2A2A2A),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = if (settings.appMode == AppMode.LEGACY) "● 原始模式 — YOLO 检测" else "● OpenMV 模式 — 运行脚本",
+                    fontSize = 14.sp,
+                    color = Color.White,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+
+            if (settings.appMode == AppMode.LEGACY) {
+                // 模型选择
+                Text("模型", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    models.forEach { model ->
+                        val isSelected = model.name == selectedModel
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onModelSelected(model.name) },
+                            color = if (isSelected) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color(0xFF2A2A2A),
+                            shape = MaterialTheme.shapes.small
                         ) {
-                            Text(
-                                text = model.name,
-                                color = if (isSelected) Color(0xFF4CAF50) else Color.White,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                text = model.inputSize,
-                                color = Color.Gray,
-                                fontSize = 11.sp
-                            )
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = model.name,
+                                    color = if (isSelected) Color(0xFF4CAF50) else Color.White,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = model.inputSize,
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
                 }
+
+                Spacer(Modifier.height(4.dp))
+
+                // 推理后端
+                Text("推理后端", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+
+                InferenceBackendGrid(
+                    selectedBackend = settings.inferenceBackend,
+                    enabledBackends = modelBackends,
+                    onBackendChange = onBackendChange
+                )
             }
-
-            Spacer(Modifier.height(4.dp))
-
-            // 推理后端
-            Text("推理后端", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-
-            InferenceBackendGrid(
-                selectedBackend = settings.inferenceBackend,
-                enabledBackends = modelBackends,
-                onBackendChange = onBackendChange
-            )
 
             Spacer(Modifier.height(16.dp))
 

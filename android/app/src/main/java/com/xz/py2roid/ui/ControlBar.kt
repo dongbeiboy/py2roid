@@ -24,11 +24,15 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun ControlBar(
     isLandscape: Boolean = false,
+    appMode: AppMode = AppMode.LEGACY,
     onSettingsClick: () -> Unit = {},
     onModelClick: () -> Unit = {},
     onCommClick: () -> Unit = {},
+    onScriptClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isOpenmv = appMode == AppMode.OPENMV
+
     if (isLandscape) {
         // 横屏：右侧竖排单字按钮
         Column(
@@ -41,8 +45,13 @@ fun ControlBar(
             verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
         ) {
             Button(onClick = onSettingsClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("设\n置", fontSize = 12.sp) }
-            Button(onClick = onModelClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("模\n型", fontSize = 12.sp) }
-            Button(onClick = onCommClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("通\n讯", fontSize = 12.sp) }
+            if (!isOpenmv) {
+                Button(onClick = onModelClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("模\n型", fontSize = 12.sp) }
+                Button(onClick = onCommClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("通\n讯", fontSize = 12.sp) }
+            } else {
+                Button(onClick = onScriptClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("脚\n本", fontSize = 12.sp) }
+                Button(onClick = onCommClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), contentPadding = PaddingValues(2.dp), modifier = Modifier.fillMaxWidth().weight(1f)) { Text("通\n讯", fontSize = 12.sp) }
+            }
         }
     } else {
         // 竖屏：底部横排
@@ -56,8 +65,13 @@ fun ControlBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(onClick = onSettingsClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("设置", fontSize = 13.sp) }
-            Button(onClick = onModelClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("模型", fontSize = 13.sp) }
-            Button(onClick = onCommClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("通讯", fontSize = 13.sp) }
+            if (!isOpenmv) {
+                Button(onClick = onModelClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("模型", fontSize = 13.sp) }
+                Button(onClick = onCommClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("通讯", fontSize = 13.sp) }
+            } else {
+                Button(onClick = onScriptClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("📜脚本", fontSize = 13.sp) }
+                Button(onClick = onCommClick, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333), contentColor = Color.White), modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) { Text("通讯", fontSize = 13.sp) }
+            }
         }
     }
 }
