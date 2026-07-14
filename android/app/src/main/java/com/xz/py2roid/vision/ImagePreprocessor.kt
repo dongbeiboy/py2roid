@@ -32,13 +32,25 @@ object ImagePreprocessor {
     /** YOLO 默认 padding 值（近似自然图像均值） */
     private const val PAD_VALUE = 114.0
 
-    private var cacheMat: Mat? = null
+    /** Buffer pool: 避免每帧重新分配 ByteArray/FloatArray */
+    private var _poolRgbPixels: ByteArray? = null
+    private var _poolFloatTensor: FloatArray? = null
+    private var _poolNv21Mat: Mat? = null
+    private var _poolRgbMat: Mat? = null
+    private var _poolResizedMat: Mat? = null
+    private var _poolPaddedMat: Mat? = null
 
     /**
      * 预处理 CameraX 帧 → 模型输入张量。
      *
-     * 流程：NV21 → BGR Mat → 旋转校正 → letterbox 等比缩放 + 灰边填充
-     * → BGR→RGB → 分通道 → float32[3×H×W] → 归一化 [0,1]
+     * 优化流程：NV21 → RGB Mat → 旋转校正 → letterbox 等比缩放 + 灰边填充
+     * → 单次读取 RGB 字节 → 交错分通道 → float32[3×H×W] → 归一化 [0,1]
+     *
+     * 相比原流程（NV21→BGR→RGB→split→3×convertTo），消除了：
+     *   - 1 次 BGR↔RGB 转换
+     *   - Core.split 产生的 3 个临时 Mat
+     *   - 每通道 1 次 convertTo + 1 次 float32 Mat 分配
+     *   共计减少 6+ 次 Mat 分配/帧，大幅降低 GC 压力。
      *
      * @param image CameraX Image（传感器原始帧）
      * @param rotationDegrees 图像旋转角度（0/90/180/270），取自 ImageProxy.imageInfo.rotationDegrees
@@ -56,7 +68,13 @@ object ImagePreprocessor {
 
     /**
      * 预处理预提取的 NV21 字节数组 → 模型输入张量。
+     *
      * 与 [preprocess(Image)] 共享同一处理管线，避免重复读取 Image planes。
+     *
+     * === 优化点 ===
+     * 1. NV21→RGB 直出（跳过 BGR 中间态，节省 1 次 cvtColor）
+     * 2. RGB 像素 → float32[3×H×W] 单次完成（跳过 Core.split + 3×convertTo + 额外归一化循环）
+     * 3. Buffer pool 复用预分配数组和 Mat，减少 GC 抖动
      */
     fun preprocess(
         nv21: ByteArray,
@@ -69,29 +87,34 @@ object ImagePreprocessor {
         try {
             val t0 = System.currentTimeMillis()
 
-            // ── 1. NV21 → BGR Mat ──
-            val nv21Mat = Mat(srcH * 3 / 2, srcW, CvType.CV_8UC1)
-            nv21Mat.put(0, 0, nv21)
-            val srcMat = Mat()
-            Imgproc.cvtColor(nv21Mat, srcMat, Imgproc.COLOR_YUV2BGR_NV21)
-            nv21Mat.release()
+            // ── 1. NV21 → RGB Mat（直出，跳过 BGR 中间态） ──
+            // 确保尺寸匹配：若分辨率变化则重建
+            var nv21Mat = _poolNv21Mat
+            if (nv21Mat == null || nv21Mat.rows() != srcH * 3 / 2 || nv21Mat.cols() != srcW) {
+                nv21Mat?.release()
+                Mat(srcH * 3 / 2, srcW, CvType.CV_8UC1).also { _poolNv21Mat = it; nv21Mat = it }
+            }
+            nv21Mat!!.put(0, 0, nv21)
+            val rgbMat = _poolRgbMat?.takeIf { it.rows() == srcH && it.cols() == srcW }
+                ?: Mat().also { _poolRgbMat = it }
+            Imgproc.cvtColor(nv21Mat!!, rgbMat, Imgproc.COLOR_YUV2RGB_NV21)
 
             val t1 = System.currentTimeMillis()
-            Log.d(TAG, "YUV→BGR ${srcW}x${srcH} = ${t1 - t0}ms")
+            Log.d(TAG, "YUV→RGB ${srcW}x${srcH} = ${t1 - t0}ms")
 
             // ── 2. 旋转校正（传感器帧 → 屏幕方向） ──
             if (rotationDegrees != 0) {
                 when (rotationDegrees) {
-                    90 -> Core.rotate(srcMat, srcMat, Core.ROTATE_90_CLOCKWISE)
-                    180 -> Core.rotate(srcMat, srcMat, Core.ROTATE_180)
-                    270 -> Core.rotate(srcMat, srcMat, Core.ROTATE_90_COUNTERCLOCKWISE)
+                    90 -> Core.rotate(rgbMat, rgbMat, Core.ROTATE_90_CLOCKWISE)
+                    180 -> Core.rotate(rgbMat, rgbMat, Core.ROTATE_180)
+                    270 -> Core.rotate(rgbMat, rgbMat, Core.ROTATE_90_COUNTERCLOCKWISE)
                 }
                 Log.d(TAG, "Rotated ${rotationDegrees}°")
             }
 
             // 旋转后宽高可能交换（90°/270°），用新变量避免遮蔽参数
-            val rotW = srcMat.width()
-            val rotH = srcMat.height()
+            val rotW = rgbMat.width()
+            val rotH = rgbMat.height()
 
             // ── 3. Letterbox：等比缩放 + 灰边填充 ──
             val scale = minOf(targetWidth.toFloat() / rotW, targetHeight.toFloat() / rotH)
@@ -100,49 +123,36 @@ object ImagePreprocessor {
             val padLeft = (targetWidth - newW) / 2
             val padTop = (targetHeight - newH) / 2
 
-            // 等比缩放
-            val resizedMat = cacheMat ?: Mat()
-            cacheMat = resizedMat
-            Imgproc.resize(srcMat, resizedMat, Size(newW.toDouble(), newH.toDouble()))
+            // 等比缩放（复用 Mat）
+            val resizedMat = _poolResizedMat?.takeIf {
+                it.rows() >= newH && it.cols() >= newW && it.type() == CvType.CV_8UC3
+            } ?: Mat().also { _poolResizedMat = it }
+            Imgproc.resize(rgbMat, resizedMat, Size(newW.toDouble(), newH.toDouble()))
             val t3 = System.currentTimeMillis()
             Log.d(TAG, "Letterbox ${srcW}x${srcH}→${targetWidth}x${targetHeight} " +
                     "scale=%.3f new=${newW}x${newH} pad=($padLeft,$padTop) = ${t3 - t1}ms".format(scale))
 
-            // BGR → RGB（YOLO 期望 RGB 输入）
-            val rgbMat = Mat()
-            Imgproc.cvtColor(resizedMat, rgbMat, Imgproc.COLOR_BGR2RGB)
+            // 创建 640×640 填充图（灰边 114）— 复用 Mat
+            val paddedMat = _poolPaddedMat?.takeIf { it.rows() == targetHeight && it.cols() == targetWidth && it.type() == CvType.CV_8UC3 }
+                ?: Mat(targetHeight, targetWidth, CvType.CV_8UC3).also { _poolPaddedMat = it }
+            paddedMat.setTo(Scalar.all(PAD_VALUE))
+            resizedMat.copyTo(paddedMat.submat(padTop, padTop + newH, padLeft, padLeft + newW))
 
-            // 创建 640×640 填充图（灰边 114）
-            val paddedMat = Mat(targetHeight, targetWidth, CvType.CV_8UC3, Scalar.all(PAD_VALUE))
-            rgbMat.copyTo(paddedMat.submat(padTop, padTop + newH, padLeft, padLeft + newW))
-            rgbMat.release()
-            srcMat.release()
+            // ── 4. 单次读取 RGB 像素 → float32[3×H×W] 归一化 ──
+            val totalPixels = targetWidth * targetHeight
+            val rgbPixels = _poolRgbPixels?.takeIf { it.size >= totalPixels * 3 }
+                ?: ByteArray(totalPixels * 3).also { _poolRgbPixels = it }
+            paddedMat.get(0, 0, rgbPixels)
 
-            // ── 4. 分通道 → float32 → 归一化 ──
-            val channels8U = ArrayList<Mat>(3).apply {
-                add(Mat())
-                add(Mat())
-                add(Mat())
-            }
-            Core.split(paddedMat, channels8U)
-            paddedMat.release()
+            val floatArray = _poolFloatTensor?.takeIf { it.size >= 3 * totalPixels }
+                ?: FloatArray(3 * totalPixels).also { _poolFloatTensor = it }
 
-            val floatArray = FloatArray(3 * targetHeight * targetWidth)
-            var offset = 0
-            for (c8 in channels8U) {
-                val c32f = Mat(targetHeight, targetWidth, CvType.CV_32FC1)
-                c8.convertTo(c32f, CvType.CV_32FC1)
-                val buf = FloatArray(targetHeight * targetWidth)
-                c32f.get(0, 0, buf)
-                buf.copyInto(floatArray, offset)
-                offset += targetHeight * targetWidth
-                c32f.release()
-                c8.release()
-            }
-
-            // 归一化 [0, 255] → [0, 1]
-            for (i in floatArray.indices) {
-                floatArray[i] /= 255.0f
+            // 单循环：字节交错 RGB → 平面分通道 float32 + 归一化 [0,1]
+            for (i in 0 until totalPixels) {
+                val base = i * 3
+                floatArray[i] = (rgbPixels[base].toInt() and 0xFF) * 0.003921569f           // R
+                floatArray[totalPixels + i] = (rgbPixels[base + 1].toInt() and 0xFF) * 0.003921569f // G
+                floatArray[2 * totalPixels + i] = (rgbPixels[base + 2].toInt() and 0xFF) * 0.003921569f // B
             }
 
             val totalMs = System.currentTimeMillis() - t0
@@ -163,8 +173,12 @@ object ImagePreprocessor {
     }
 
     fun close() {
-        cacheMat?.release()
-        cacheMat = null
+        _poolNv21Mat?.release(); _poolNv21Mat = null
+        _poolRgbMat?.release(); _poolRgbMat = null
+        _poolResizedMat?.release(); _poolResizedMat = null
+        _poolPaddedMat?.release(); _poolPaddedMat = null
+        _poolRgbPixels = null
+        _poolFloatTensor = null
     }
 
     /**

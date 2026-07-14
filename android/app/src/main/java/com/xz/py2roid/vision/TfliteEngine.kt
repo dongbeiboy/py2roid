@@ -86,6 +86,11 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
     private var outputScale = 1f
     private var outputZeroPoint = 0
 
+    // ── Buffer pool：避免每帧重新分配 ByteBuffer ──
+    private var _poolInputBuffer: ByteBuffer? = null
+    private var _poolOutputBuffer: ByteBuffer? = null
+    private var _poolInputArray: FloatArray? = null   // NHWC 转换结果复用
+
     override val name get() = "TFLite"
     override val provider get() = _provider
     override val inputWidth get() = _inputWidth
@@ -152,74 +157,77 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
     override fun infer(inputTensor: FloatArray): FloatArray {
         val interp = interpreter ?: throw IllegalStateException("Model not loaded")
 
-        // TFLite 输入 shape: [1, H, W, 3] or [1, 3, H, W]
-        // ONNX 输入是 [1, 3, H, W] CHW，TFLite 默认 NHWC
-        val chwArray = inputTensor
-        val nhwcArray = if (_inputChannels == 3) {
-            chwToNhwc(chwArray)
+        // TFLite 输入 shape: [1, H, W, 3] (NHWC) vs ONNX [1, 3, H, W] (CHW)
+        // CHW→NHWC 布局转换，复用中间数组避免每帧分配
+        val needNhwc = _inputChannels == 3
+        val totalElems = _inputChannels * _inputHeight * _inputWidth
+        val nhwcArray: FloatArray
+        if (needNhwc) {
+            val pool = _poolInputArray
+            nhwcArray = if (pool != null && pool.size >= totalElems) pool else {
+                FloatArray(totalElems).also { _poolInputArray = it }
+            }
+            chwToNhwc(inputTensor, nhwcArray)
         } else {
-            chwArray
+            nhwcArray = inputTensor
         }
 
-        // ── 构建输入 buffer ──
-        val inputBuffer: ByteBuffer
+        // ── 复用输入 buffer ──
         val isInputQuantized = inputDataType != DataType.FLOAT32
-        // 用 elemBytes 判断是否为非标准量化类型（如 FP16）
-        val inputElemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else if (!isInputQuantized) 4 else 2
+        val inputElemBytes = when (inputDataType) {
+            DataType.INT8, DataType.UINT8 -> 1
+            DataType.FLOAT32 -> 4
+            else -> 2 // FP16, INT16, etc
+        }
+        val inputBufSize = totalElems * inputElemBytes
+        val inputBuffer = _poolInputBuffer?.takeIf { it.capacity() >= inputBufSize }
+            ?: ByteBuffer.allocateDirect(inputBufSize).also { _poolInputBuffer = it }
+        inputBuffer.order(ByteOrder.nativeOrder())
+        inputBuffer.rewind()
+        inputBuffer.limit(inputBufSize)
+
         if (isInputQuantized) {
-            val bufSize = nhwcArray.size * inputElemBytes
-            Logger.d("[Debug] quant input: type=$inputDataType elemBytes=$inputElemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
-            inputBuffer = ByteBuffer.allocateDirect(bufSize)
-            inputBuffer.order(ByteOrder.nativeOrder())
             if (inputElemBytes == 2) {
-                // FP16 或 INT16: 每元素 2 字节，用 putShort 写入
                 for (v in nhwcArray) {
                     val q = ((v / inputScale + inputZeroPoint).toInt()).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                     inputBuffer.putShort(q.toShort())
                 }
             } else {
                 for (v in nhwcArray) {
-                    val q = (v / inputScale + inputZeroPoint + 0.5f).toInt()
+                    val q = (v / inputScale + inputZeroPoint + 0.5f).toInt().coerceIn(0, 255)
                     inputBuffer.put(q.toByte())
                 }
             }
         } else {
-            val bufSize = nhwcArray.size * 4
-            Logger.d("[Debug] float input: bufSize=$bufSize")
-            inputBuffer = ByteBuffer.allocateDirect(bufSize)
-            inputBuffer.order(ByteOrder.nativeOrder())
             inputBuffer.asFloatBuffer().put(nhwcArray)
         }
         inputBuffer.rewind()
 
-        // ── 构建输出 buffer ──
+        // ── 复用输出 buffer ──
         val isOutputQuantized = outputDataType != DataType.FLOAT32
-        val outElemBytes = if (outputDataType == DataType.INT8 || outputDataType == DataType.UINT8) 1 else if (!isOutputQuantized) 4 else 2
+        val outElemBytes = when (outputDataType) {
+            DataType.INT8, DataType.UINT8 -> 1
+            DataType.FLOAT32 -> 4
+            else -> 2
+        }
         val outBufSize = outputSize * outElemBytes
-        Logger.d("[Debug] output: type=$outputDataType elemBytes=$outElemBytes bufSize=$outBufSize scale=$outputScale zp=$outputZeroPoint")
-        val outputBuffer = ByteBuffer.allocateDirect(outBufSize)
+        val outputBuffer = _poolOutputBuffer?.takeIf { it.capacity() >= outBufSize }
+            ?: ByteBuffer.allocateDirect(outBufSize).also { _poolOutputBuffer = it }
         outputBuffer.order(ByteOrder.nativeOrder())
+        outputBuffer.rewind()
+        outputBuffer.limit(outBufSize)
 
-        val outputs = java.util.HashMap<Int, Any>()
-        outputs[0] = outputBuffer
-        interp.runForMultipleInputsOutputs(arrayOf<Any>(inputBuffer), outputs)
+        interp.runForMultipleInputsOutputs(arrayOf<Any>(inputBuffer), mapOf(0 to outputBuffer))
 
         // ── 读取输出 ──
         outputBuffer.rewind()
         val outArray = FloatArray(outputSize)
         if (isOutputQuantized && outElemBytes == 1) {
-            var maxVal = 0f
-            var sumVal = 0f
             for (i in 0 until outputSize) {
-                val q = outputBuffer.get().toInt() and 0xFF // unsigned byte
-                val v = (q - outputZeroPoint).toFloat() * outputScale
-                outArray[i] = v
-                if (v > maxVal) maxVal = v
-                sumVal += v
+                val q = outputBuffer.get().toInt() and 0xFF
+                outArray[i] = (q - outputZeroPoint).toFloat() * outputScale
             }
-            Logger.d("[Debug] output dequant: max=$maxVal avg=${sumVal / outputSize} first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         } else if (isOutputQuantized && outElemBytes == 2) {
-            // FP16/INT16 输出：每 2 字节读取 half/short → 转 float
             for (i in 0 until outputSize) {
                 val halfBits = outputBuffer.getShort().toInt() and 0xFFFF
                 outArray[i] = halfToFloat(halfBits)
@@ -238,6 +246,10 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         closeDelegate()
         try { interpreter?.close() } catch (_: Exception) {}
         interpreter = null
+        // 释放 buffer pool（模型重载时清空，避免 buffer size 不匹配）
+        _poolInputBuffer = null
+        _poolOutputBuffer = null
+        _poolInputArray = null
     }
 
     // ── private ──────────────────────────────────────────────
@@ -293,19 +305,26 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         }
     }
 
-    private fun chwToNhwc(chw: FloatArray): FloatArray {
+    /** CHW → NHWC 布局转换，写入预分配的目标数组（避免分配新 FloatArray） */
+    private fun chwToNhwc(chw: FloatArray, nhwc: FloatArray) {
         val c = _inputChannels
         val h = _inputHeight
         val w = _inputWidth
-        val nhwc = FloatArray(c * h * w)
-        for (ci in 0 until c) {
-            for (hi in 0 until h) {
-                for (wi in 0 until w) {
-                    nhwc[hi * w * c + wi * c + ci] = chw[ci * h * w + hi * w + wi]
+        var ci = 0
+        while (ci < c) {
+            val cOffset = ci * h * w
+            var hi = 0
+            while (hi < h) {
+                val rowOffset = hi * w * c
+                var wi = 0
+                while (wi < w) {
+                    nhwc[rowOffset + wi * c + ci] = chw[cOffset + hi * w + wi]
+                    wi++
                 }
+                hi++
             }
+            ci++
         }
-        return nhwc
     }
 
     private fun closeDelegate() {
