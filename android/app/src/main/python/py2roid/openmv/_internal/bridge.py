@@ -111,8 +111,9 @@ def _nv21_to_target(
 
     # RGB565
     uv = np.frombuffer(nv21[y_size:y_size + uv_size], dtype=np.uint8).reshape(src_h // 2, src_w)
-    u = uv[:, :src_w // 2]
-    v = uv[:, src_w // 2:]
+    # NV21: UV 平面是 V0,U0,V1,U1,... 交错排列，偶数列=V 奇数列=U
+    v = uv[:, 0::2]
+    u = uv[:, 1::2]
     u = np.repeat(np.repeat(u, 2, axis=0), 2, axis=1)[:src_h, :src_w]
     v = np.repeat(np.repeat(v, 2, axis=0), 2, axis=1)[:src_h, :src_w]
 

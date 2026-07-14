@@ -168,7 +168,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         val inputElemBytes = if (inputDataType == DataType.INT8 || inputDataType == DataType.UINT8) 1 else if (!isInputQuantized) 4 else 2
         if (isInputQuantized) {
             val bufSize = nhwcArray.size * inputElemBytes
-            Logger.i("[Debug] quant input: type=$inputDataType elemBytes=$inputElemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
+            Logger.d("[Debug] quant input: type=$inputDataType elemBytes=$inputElemBytes bufSize=$bufSize scale=$inputScale zp=$inputZeroPoint")
             inputBuffer = ByteBuffer.allocateDirect(bufSize)
             inputBuffer.order(ByteOrder.nativeOrder())
             if (inputElemBytes == 2) {
@@ -185,7 +185,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
             }
         } else {
             val bufSize = nhwcArray.size * 4
-            Logger.i("[Debug] float input: bufSize=$bufSize")
+            Logger.d("[Debug] float input: bufSize=$bufSize")
             inputBuffer = ByteBuffer.allocateDirect(bufSize)
             inputBuffer.order(ByteOrder.nativeOrder())
             inputBuffer.asFloatBuffer().put(nhwcArray)
@@ -196,7 +196,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
         val isOutputQuantized = outputDataType != DataType.FLOAT32
         val outElemBytes = if (outputDataType == DataType.INT8 || outputDataType == DataType.UINT8) 1 else if (!isOutputQuantized) 4 else 2
         val outBufSize = outputSize * outElemBytes
-        Logger.i("[Debug] output: type=$outputDataType elemBytes=$outElemBytes bufSize=$outBufSize scale=$outputScale zp=$outputZeroPoint")
+        Logger.d("[Debug] output: type=$outputDataType elemBytes=$outElemBytes bufSize=$outBufSize scale=$outputScale zp=$outputZeroPoint")
         val outputBuffer = ByteBuffer.allocateDirect(outBufSize)
         outputBuffer.order(ByteOrder.nativeOrder())
 
@@ -217,7 +217,7 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
                 if (v > maxVal) maxVal = v
                 sumVal += v
             }
-            Logger.i("[Debug] output dequant: max=$maxVal avg=${sumVal / outputSize} first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
+            Logger.d("[Debug] output dequant: max=$maxVal avg=${sumVal / outputSize} first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         } else if (isOutputQuantized && outElemBytes == 2) {
             // FP16/INT16 输出：每 2 字节读取 half/short → 转 float
             for (i in 0 until outputSize) {
@@ -225,11 +225,11 @@ class TfliteEngine(private val context: Context) : InferenceEngine {
                 outArray[i] = halfToFloat(halfBits)
             }
             val maxVal = outArray.max()
-            Logger.i("[Debug] output fp16: max=$maxVal first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
+            Logger.d("[Debug] output fp16: max=$maxVal first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         } else {
             outputBuffer.asFloatBuffer().get(outArray)
             val maxVal = outArray.max()
-            Logger.i("[Debug] output float: max=$maxVal first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
+            Logger.d("[Debug] output float: max=$maxVal first10=${outArray.take(10).joinToString { "%.4f".format(it) }}")
         }
         return outArray
     }

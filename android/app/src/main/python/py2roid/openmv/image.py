@@ -79,11 +79,11 @@ class Image:
         """转换为灰度图。"""
         if self._fmt == self.GRAYSCALE:
             return self.copy()
-        # RGB565 → GRAYSCALE
-        arr = self._data.view(np.uint8).reshape(self._h, self._w * 2)
-        r = (arr[:, 0::2].astype(np.uint16) << 3) & 0xF8
-        g = ((arr[:, 0::2].astype(np.uint16) << 5) | (arr[:, 1::2].astype(np.uint16) >> 3)) & 0xFC
-        b = (arr[:, 1::2].astype(np.uint16) << 3) & 0xF8
+        # RGB565 → GRAYSCALE (uint16 little-endian: R[15:11] G[10:5] B[4:0])
+        arr16 = self._data
+        r = (((arr16 >> 11) & 0x1F) << 3).astype(np.float32)
+        g = (((arr16 >> 5) & 0x3F) << 2).astype(np.float32)
+        b = ((arr16 & 0x1F) << 3).astype(np.float32)
         gray = (0.299 * r + 0.587 * g + 0.114 * b).astype(np.uint8)
         return Image(gray, self._w, self._h, self.GRAYSCALE)
 
@@ -230,7 +230,7 @@ class Image:
     ):
         """绘制十字。"""
         self.draw_line(x - size, y, x + size, y, color, thickness)
-        self.draw_line(x, y - size, y, x + size, color, thickness)
+        self.draw_line(x, y - size, x, y + size, color, thickness)
 
     def draw_string(
         self, x: int, y: int, text: str,

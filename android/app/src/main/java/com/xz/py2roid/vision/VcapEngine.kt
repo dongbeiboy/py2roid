@@ -33,9 +33,9 @@ class VcapEngine(private val context: Context) : InferenceEngine {
             if (sdkChecked) return sdkAvailable
             sdkChecked = true
             sdkAvailable = try {
-                System.loadLibrary("py2roid_vcap")
+                Class.forName("com.vivo.vcap.VcapInstance")
                 true
-            } catch (_: UnsatisfiedLinkError) {
+            } catch (_: ClassNotFoundException) {
                 false
             }
             return sdkAvailable

@@ -226,9 +226,11 @@ def _bridge_convert_frame(
                 # NV21 → BGR（近似）
                 import struct
                 # 简化：只取 Y 平面 + 最近邻上采样 UV
-                uv = np.repeat(np.repeat(uv_plane, 2, axis=0), 2, axis=1)
-                u = uv[:, :src_w]
-                v = uv[:, src_w:]
+                # NV21: UV 平面是 V0,U0,V1,U1,... 交错排列，先隔列分离再上采样
+                v_plane = uv_plane[:, 0::2]
+                u_plane = uv_plane[:, 1::2]
+                v = np.repeat(np.repeat(v_plane, 2, axis=0), 2, axis=1)
+                u = np.repeat(np.repeat(u_plane, 2, axis=0), 2, axis=1)
 
                 # YUV → RGB
                 y = y_plane.astype(np.float32)

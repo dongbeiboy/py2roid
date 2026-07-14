@@ -108,8 +108,7 @@ class CameraController(
                     onFrame(imageProxy)
                 } catch (e: Exception) {
                     Log.e(TAG, "Frame analysis error", e)
-                    // onFrame 异常时确保释放，double-close 安全
-                    try { imageProxy.close() } catch (_: Exception) {}
+                    // 不在此 close——由调用方 finally 统一处理，避免 double-close
                 }
             }
 

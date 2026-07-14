@@ -87,7 +87,7 @@ object UsbSerialManager {
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             addAction(ACTION_USB_PERMISSION)
         }
-        context.registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED)
+        context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
 
         // 扫描现有设备
         refreshDevices()

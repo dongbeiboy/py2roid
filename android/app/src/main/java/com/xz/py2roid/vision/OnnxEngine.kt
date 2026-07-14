@@ -18,7 +18,6 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
         private const val TAG = "py2roid.OnnxEngine"
     }
 
-    private var ortEnv: OrtEnvironment? = null
     private var session: OrtSession? = null
     private var _provider = "CPU"
     private var _inputWidth = 640
@@ -35,7 +34,7 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
     fun loadModel(modelPath: String, backend: InferenceBackend) {
         close()
         try {
-            ortEnv = OrtEnvironment.getEnvironment()
+            val ortEnv = OrtEnvironment.getEnvironment()
             Logger.d("[Load] backend=$backend model=$modelPath")
 
             val resolvedBackend = if (backend == InferenceBackend.Auto) {
@@ -52,13 +51,13 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
 
             Logger.d("[Load] calling createSession ...")
             session = try {
-                ortEnv!!.createSession(modelPath, opts).also {
+                ortEnv.createSession(modelPath, opts).also {
                     Logger.i("[Load] createSession OK provider=$_provider")
                 }
             } catch (e: Exception) {
                 Logger.w("[CreateSession] ${e::class.simpleName}: ${e.message} backend=$resolvedBackend -> fallback CPU")
                 _provider = "CPU"
-                ortEnv!!.createSession(modelPath, OrtSession.SessionOptions().apply {
+                ortEnv.createSession(modelPath, OrtSession.SessionOptions().apply {
                     setIntraOpNumThreads(4)
                 }).also {
                     Logger.i("[Load] createSession (CPU fallback) OK")
@@ -76,7 +75,7 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
     override fun loadModel(modelPath: String) = loadModel(modelPath, InferenceBackend.CPU)
 
     override fun infer(inputTensor: FloatArray): FloatArray {
-        val env = ortEnv ?: throw IllegalStateException("Model not loaded")
+        val env = OrtEnvironment.getEnvironment()
         val sess = session ?: throw IllegalStateException("Model not loaded")
         val shape = longArrayOf(1L, 3L, _inputHeight.toLong(), _inputWidth.toLong())
         val tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(inputTensor), shape)
@@ -96,7 +95,6 @@ class OnnxEngine(private val context: Context) : InferenceEngine {
     override fun close() {
         try { session?.close() } catch (_: Exception) {}
         session = null
-        ortEnv = null
     }
 
     // ── private ──────────────────────────────────────────────

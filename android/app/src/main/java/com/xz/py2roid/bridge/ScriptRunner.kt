@@ -106,8 +106,8 @@ class ScriptRunner {
     /** 重启脚本。 */
     fun restart(name: String, content: String, scope: CoroutineScope) {
         stop()
-        // 短暂等待确保清理完成
-        CoroutineScope(Dispatchers.IO).launch {
+        // 在传入的 scope 中启动，避免独立 CoroutineScope 泄漏
+        scope.launch {
             delay(100)
             start(name, content, scope)
         }
