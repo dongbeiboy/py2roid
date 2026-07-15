@@ -1,11 +1,26 @@
 const logEl=document.getElementById('log'),fEl=document.getElementById('filter'),
     asEl=document.getElementById('autoScroll'),stEl=document.getElementById('showTime'),
     countEl=document.getElementById('count'),statusEl=document.getElementById('status'),
-    usageEl=document.getElementById('usage'),hudEl=document.getElementById('hud');
+    usageEl=document.getElementById('usage'),hudEl=document.getElementById('hud'),
+    perfBarEl=document.getElementById('perfBar'),modelBarEl=document.getElementById('modelBar'),
+    cpEl=document.getElementById('condensePerf');
 let allLines=[],renderedCount=0,prevFilter='';
 
-// ======== 日志解析 ========
-// 格式: [06:16:00] [I] [Stats] CPU=49% TEMP=69℃ GPU=-1
+// ── 模型会话追踪 ──
+let currentModelName='(无)',currentProvider='';
+let perfStats=null;
+let modelHistory=[];
+
+// ── 预设过滤（OR 逻辑）──
+let activePreset=null;
+const PRESETS={
+    '':null,
+    '问题':{or:['[E] ','[W] ']},
+    '性能':{or:['[Perf]','[Result]']},
+    '模型':{or:['[Route]','Model loaded','Detection started','provider=']},
+};
+
+// ── 日志解析 ──
 function parseLine(l){
     let time='',level='',src='',msg=l;
     const m=l.match(/^\[([^\]]+)\]\s*\[([^\]]+)\]\s*\[([^\]]+)\]\s*(.*)/);
@@ -17,8 +32,7 @@ function parseLine(l){
     return{time:'',level:'',src:'',msg:l};
 }
 
-// ======== Stats HUD ========
-// 从 Stats 行提取 CPU/TEMP/GPU
+// ── Stats HUD ──
 function parseStats(msg){
     const cpu=(msg.match(/CPU=([\d.]+)%/)||[])[1];
     const temp=(msg.match(/TEMP=([\d.]+)℃/)||[])[1];
@@ -35,9 +49,109 @@ function updateHUD(p){
     hudEl.innerHTML=html;
 }
 
-// ======== 工具函数 ========
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function match(l,ks){return !ks.length||ks.every(k=>l.toLowerCase().includes(k))}
+// ── 检测模型切换&性能行 ──
+function detectModelSwitch(p,rawLine){
+    if(p.src==='Route' && p.msg.includes('backend=')){
+        const m=p.msg.match(/model=(\S+)/);
+        if(m) currentModelName=m[1];
+    }
+    if(p.msg.includes('provider=')){
+        const m=p.msg.match(/provider=(\S+)/);
+        if(m) currentProvider=m[1];
+    }
+    if(p.msg==='Detection started'){
+        onModelSessionStart();
+    }
+}
+
+function onModelSessionStart(){
+    perfStats={model:currentModelName,provider:currentProvider,count:0,pre:[],inf:[],total:[]};
+    modelHistory.push({name:currentModelName,provider:currentProvider,time:new Date().toLocaleTimeString()});
+    updateModelBar();
+    updatePerfBar();
+}
+
+// ── 解析 Perf 行 ──
+function parsePerf(msg){
+    const m=msg.match(/pre=(\d+)ms\s+inf=(\d+)ms\s+total=(\d+)ms/);
+    if(!m) return null;
+    return{pre:+m[1],inf:+m[2],total:+m[3]};
+}
+
+function feedPerf(p){
+    const perf=parsePerf(p.msg);
+    if(!perf||!perfStats) return;
+    perfStats.count++;
+    perfStats.pre.push(perf.pre);
+    perfStats.inf.push(perf.inf);
+    perfStats.total.push(perf.total);
+    updatePerfBar();
+}
+
+function statsSummary(arr){
+    if(!arr||!arr.length) return{min:'-',avg:'-',max:'-'};
+    const sum=arr.reduce((a,b)=>a+b,0);
+    return{min:Math.min(...arr).toFixed(0),avg:(sum/arr.length).toFixed(0),max:Math.max(...arr).toFixed(0)};
+}
+
+function updatePerfBar(){
+    if(!perfStats||!perfStats.count){
+        perfBarEl.innerHTML=''; perfBarEl.style.display='none';
+        return;
+    }
+    const pre=statsSummary(perfStats.pre);
+    const inf=statsSummary(perfStats.inf);
+    const tot=statsSummary(perfStats.total);
+    const fps=(1000/perfStats.total.reduce((a,b)=>a+b,0)/perfStats.total.length).toFixed(1);
+    perfBarEl.style.display='flex';
+    perfBarEl.innerHTML=
+        `<span class="pm-name">${esc(currentModelName)}</span>`+
+        `<span class="pm-provider">${esc(currentProvider)}</span>`+
+        `<span class="pm-sep">|</span>`+
+        `<span class="pm-label">Pre</span>`+
+        `<span class="pm-val">${pre.avg}</span>`+
+        `<span class="pm-dim">${pre.min}-${pre.max}</span>`+
+        `<span class="pm-sep">|</span>`+
+        `<span class="pm-label">Inf</span>`+
+        `<span class="pm-val hi">${inf.avg}</span>`+
+        `<span class="pm-dim">${inf.min}-${inf.max}</span>`+
+        `<span class="pm-sep">|</span>`+
+        `<span class="pm-label">总</span>`+
+        `<span class="pm-val">${tot.avg}</span>`+
+        `<span class="pm-dim">${tot.min}-${tot.max}</span>`+
+        `<span class="pm-sep">|</span>`+
+        `<span class="pm-fps">${fps} FPS</span>`+
+        `<span class="pm-cnt">${perfStats.count}帧</span>`;
+}
+
+function updateModelBar(){
+    if(!currentModelName){
+        modelBarEl.innerHTML=''; modelBarEl.style.display='none';
+        return;
+    }
+    modelBarEl.style.display='flex';
+    modelBarEl.innerHTML=
+        `<span class="mb-key">模型:</span><span class="mb-val">${esc(currentModelName)}</span>`+
+        `<span class="mb-key">后端:</span><span class="mb-val">${esc(currentProvider||'?')}</span>`+
+        `<span class="mb-key">会话:</span><span class="mb-val">${modelHistory.length}</span>`;
+}
+
+// ── 过滤 ──
+// AND 过滤（手动输入，空格分隔）
+function matchAnd(l,ks){
+    return !ks.length||ks.every(k=>l.toLowerCase().includes(k));
+}
+// OR 过滤（预设按钮）
+function matchOr(l,ks){
+    if(!ks||!ks.length) return true;
+    return ks.some(k=>l.includes(k));
+}
+function shouldShow(l,andKs,orKs){
+    if(!matchOr(l,orKs||null)) return false;
+    return matchAnd(l,andKs||[]);
+}
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 function highlightText(text,keywords){
     if(!keywords.length) return esc(text);
@@ -66,6 +180,7 @@ function highlightText(text,keywords){
 function buildLineHTML(p,showTime,keywords){
     let cls='line';
     if(p.level==='E') cls+=' error';
+    else if(p.level==='W') cls+=' warn';
     let html='<div class="'+cls+'">';
     if(showTime&&p.time) html+='<span class="t">'+esc(p.time)+'</span>';
     if(p.level){
@@ -73,13 +188,39 @@ function buildLineHTML(p,showTime,keywords){
         html+='<span class="lvl '+lvlCls+'">'+esc(p.level)+'</span>';
     }
     if(p.src) html+='<span class="src">'+esc(p.src)+'</span>';
-    if(keywords.length) html+='<span class="msg">'+highlightText(p.msg,keywords)+'</span>';
-    else html+='<span class="msg">'+esc(p.msg)+'</span>';
+    if(keywords.length){
+        html+='<span class="msg">'+highlightText(p.msg,keywords)+'</span>';
+    }else if(p.src==='Perf'){
+        const perf=parsePerf(p.msg);
+        if(perf){
+            const fps=(1000/perf.total).toFixed(1);
+            html+=`<span class="msg perf-line">${esc(p.msg)} <span class="perf-fps">${fps}FPS</span></span>`;
+        }else html+='<span class="msg">'+esc(p.msg)+'</span>';
+    }else{
+        html+='<span class="msg">'+esc(p.msg)+'</span>';
+    }
     html+='</div>';
     return html;
 }
 
-// ======== 选择行点击 ========
+// ── 预设过滤按钮 ──
+document.getElementById('presetFilters').addEventListener('click',e=>{
+    const btn=e.target.closest('button');
+    if(!btn||!btn.dataset.preset) return;
+    document.querySelectorAll('#presetFilters .active').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    activePreset=btn.dataset.preset||null;
+    render();
+});
+
+// ── 过滤输入延迟触发 ──
+let filterTimer=null;
+function onFilterInput(){
+    clearTimeout(filterTimer);
+    filterTimer=setTimeout(()=>render(),100);
+}
+
+// ── 选择行点击 ──
 logEl.addEventListener('click',e=>{
     const div=e.target.closest('.line');
     if(!div) return;
@@ -87,26 +228,27 @@ logEl.addEventListener('click',e=>{
     div.classList.add('sel');
 });
 
-// ======== 渲染 ========
+// ── 渲染 ──
 function hasSelection(){
     const s=window.getSelection();
     return s&&s.toString().length>0;
 }
-function fullRebuild(ks,showTime){
-    const raw=ks.length?allLines.filter(l=>match(l,ks)):allLines;
-    const parsed=raw.map(l=>parseLine(l));
-    logEl.innerHTML=parsed.map(p=>buildLineHTML(p,showTime,ks)).join('');
-    renderedCount=allLines.length;
-}
+
 function render(){
-    const rawKs=fEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const andKs=fEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const orDef=activePreset?PRESETS[activePreset]:null;
+    const orKs=orDef?orDef.or:null;
     const showTime=stEl.checked;
-    const filterStr=rawKs.join(' ');
-    const filterChanged=filterStr!==prevFilter;
-    prevFilter=filterStr;
+    const condense=cpEl.checked;
+    const filterKey=JSON.stringify({and:andKs,or:activePreset});
+    const filterChanged=filterKey!==prevFilter;
+    prevFilter=filterKey;
+
     if(hasSelection()) return;
-    if(filterChanged||rawKs.length>0){
-        fullRebuild(rawKs,showTime);
+
+    // 有过滤或折叠时全量重建
+    if(filterChanged||andKs.length||orKs||condense){
+        fullRebuild(andKs,orKs,showTime,condense);
     }else{
         // 增量追加
         const frag=document.createDocumentFragment();
@@ -123,22 +265,64 @@ function render(){
     if(asEl.checked&&!hasSelection()) window.scrollTo(0,document.body.scrollHeight);
 }
 
-// ======== 轮询 ========
+function fullRebuild(andKs,orKs,showTime,condense){
+    // 过滤
+    let raw=allLines.filter(l=>shouldShow(l,andKs,orKs));
+
+    // 折叠连续 Perf 行
+    if(condense && !andKs.length && !orKs){
+        const collapsed=[];
+        let i=0;
+        while(i<raw.length){
+            const p=parseLine(raw[i]);
+            if(p.src==='Perf' && p.level==='I'){
+                // 统计连续 Perf 数
+                let cnt=1;
+                while(i+cnt<raw.length){
+                    const pn=parseLine(raw[i+cnt]);
+                    if(pn.src==='Perf' && pn.level==='I') cnt++;
+                    else break;
+                }
+                if(cnt>1){
+                    const m=p.msg.match(/(pre=\d+ms inf=\d+ms total=\d+ms)/);
+                    if(m) collapsed.push('['+p.time+'] [I] [Perf] '+m[1]+' ×'+cnt);
+                    else collapsed.push(raw[i]);
+                }else{
+                    collapsed.push(raw[i]);
+                }
+                i+=cnt;
+            }else{
+                collapsed.push(raw[i]);
+                i++;
+            }
+        }
+        raw=collapsed;
+    }
+
+    const parsed=raw.map(l=>parseLine(l));
+    logEl.innerHTML=parsed.map(p=>buildLineHTML(p,showTime,andKs)).join('');
+    renderedCount=allLines.length;
+}
+
+// ── 外部新增行处理 ──
+function processNewLine(rawLine){
+    const p=parseLine(rawLine);
+    if(p.src==='Stats'){updateHUD(p);return false;}
+    detectModelSwitch(p,rawLine);
+    if(p.src==='Perf' && p.level==='I') feedPerf(p);
+    return true;
+}
+
+// ── 轮询 ──
 async function poll(){
     try{
         const r=await fetch('/poll'),t=await r.text();
         if(t){
             const newLines=t.split('\n').filter(Boolean);
             for(const line of newLines){
-                // Stats 行 → HUD，不入日志流
-                const p=parseLine(line);
-                if(p.src==='Stats'){
-                    updateHUD(p);
-                    continue;
-                }
-                allLines.push(line);
+                if(processNewLine(line)) allLines.push(line);
             }
-            if(allLines.length>6000){allLines.splice(0,1000);renderedCount=Math.max(0,renderedCount-1000)}
+            if(allLines.length>8000){allLines.splice(0,1500);renderedCount=Math.max(0,renderedCount-1500)}
             render();
         }
         statusEl.textContent='● 已连接';statusEl.style.color='#4ec9b0';
@@ -148,17 +332,19 @@ async function poll(){
     }
 }
 
-// ======== 首次加载历史 ========
+// ── 首次加载历史 ──
 fetch('/log').then(r=>r.text()).then(text=>{
     if(text){
         const lines=text.split('\n').filter(Boolean);
         for(const line of lines){
-            const p=parseLine(line);
-            if(p.src==='Stats'){
-                updateHUD(p);
-                continue;
-            }
-            allLines.push(line);
+            if(processNewLine(line)) allLines.push(line);
+        }
+        // 从历史中恢复当前模型
+        const lastRoute=[...allLines].reverse().find(l=>l.includes('backend=')&&l.includes('model='));
+        if(lastRoute){
+            const p=parseLine(lastRoute);
+            detectModelSwitch(p,lastRoute);
+            if(allLines.find(l=>l.includes('Detection started'))) onModelSessionStart();
         }
         render();
     }

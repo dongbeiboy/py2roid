@@ -1,0 +1,7 @@
+FROM tflite-export-full
+RUN pip install --force-reinstall tensorflow -q 2>&1 | tail -5 && \
+    pip install -q "tf_keras<=2.19.0" "sng4onnx>=1.0.1" "onnx_graphsurgeon>=0.3.26" \
+        "ai-edge-litert>=1.2.0" "onnx>=1.12.0,<2.0.0" "onnx2tf>=1.26.3" \
+        "onnxslim>=0.1.71" "onnxruntime" "scipy>=1.4.1" 2>&1 | tail -3
+COPY noob/export_int8.py /work/noob/
+RUN yolo settings checks=False 2>/dev/null || true

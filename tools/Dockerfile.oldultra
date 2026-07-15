@@ -1,0 +1,6 @@
+FROM tflite-export
+# ultralytics 8.3.x 直接支持 tflite 导出，不需要 litert 全家桶
+RUN pip install --no-index --no-deps /tmp/opencv_python_headless-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
+RUN pip install "ultralytics<8.4" --force-reinstall 2>&1 | tail -5
+COPY noob/export_old_ultra.py /work/noob/
+CMD ["python", "noob/export_old_ultra.py"]

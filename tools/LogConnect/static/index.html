@@ -8,14 +8,23 @@
 </head>
 <body>
 <div class="f-bar">
-  <input id="filter" type="text" placeholder="过滤 (空格分隔 AND)..." oninput="render()">
-  <label><input type="checkbox" id="autoScroll" checked> 自动滚动</label>
+  <input id="filter" type="text" placeholder="过滤 (空格分隔 AND)..." oninput="onFilterInput()">
+  <div class="btn-group" id="presetFilters">
+    <button data-preset="" class="active">All</button>
+    <button data-preset="Error Route Perf Result Model">问题</button>
+    <button data-preset="Perf">性能</button>
+    <button data-preset="Route Model">模型</button>
+  </div>
+  <label><input type="checkbox" id="autoScroll" checked> 滚动</label>
   <label><input type="checkbox" id="showTime" checked> 时间</label>
+  <label><input type="checkbox" id="condensePerf" checked> 折叠Perf</label>
   <span id="count">0</span>
   <span id="usage"></span>
   <span id="hud"></span>
   <span id="status">○ 等待连接...</span>
 </div>
+<div id="perfBar"></div>
+<div id="modelBar"></div>
 <div id="log"></div>
 <script src="app.js"></script>
 </body>

@@ -3,6 +3,9 @@
 # Android Gradle 项目 + Python 工具 + 开发环境杂项
 # ============================================================
 
+# ---- 数据集（体积大，不纳入版本控制） ----
+datasets/
+
 # ---- Android / Gradle 构建产物 ----
 android/.gradle/
 android/.kotlin/
